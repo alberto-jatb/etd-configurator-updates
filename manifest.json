@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "date": "March 17, 2026",
+  "base_url": "https://raw.githubusercontent.com/atorralb_cisco/etd-configurator-updates/main/",
+  "files": {
+    "app.py": "7a0ad8c30e2cc358f6a6f52b5fb82b34da3e4f810d4320d4ddcc0ed79cc52d06",
+    "geo_data.py": "27d681c857c7246dcae7637026dc2bc63d2ec36cc2684edf5deb9d877ddf2042",
+    "ps_generator.py": "3f8f103e630418181ebede26bc53d448f0431abdcba2dbb205774a0edbfd420d",
+    "executor.py": "50b2b0877d56077efa0db5b4092d19e7641570f9890eef4f437a349b253a5126",
+    "version.py": "ae5ba7782f2ed39d9ba5748104609bcec668bd3548338b1b2c28cb8cd1b91eee"
+  }
+}

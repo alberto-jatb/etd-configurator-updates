@@ -1,0 +1,2 @@
+VERSION = "2.0"
+VERSION_DATE = "March 17, 2026"
