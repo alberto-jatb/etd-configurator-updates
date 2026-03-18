@@ -12,7 +12,7 @@ from tkinter import messagebox, filedialog
 import customtkinter as ctk
 
 from geo_data import GEO_REGIONS, GEO_IPS, GEO_OUTBOUND_HOSTS
-from ps_generator import generate_script
+from ps_generator import generate_script, generate_steps
 from executor import run_script
 from version import VERSION, VERSION_DATE
 
@@ -33,6 +33,319 @@ def _parse_ips(text):
     """Parse IPs from a multiline or comma-separated text block."""
     raw = re.split(r"[\n,;]+", text)
     return [ip.strip() for ip in raw if ip.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Help texts
+# ---------------------------------------------------------------------------
+
+HELP_TEXTS = {
+    "admin_upn": (
+        "The User Principal Name (UPN) of the Exchange Online admin account "
+        "used to connect and run configuration commands.\n\n"
+        "Example: admin@contoso.onmicrosoft.com\n\n"
+        "This account must have Exchange Administrator permissions."
+    ),
+    "deployment_mode": (
+        "Select the ETD deployment mode for your organization:\n\n"
+        "Journaling: Exchange sends copies of all emails to ETD via a journal "
+        "rule. ETD analyzes them passively (BCC / monitoring mode).\n\n"
+        "ETD Inline: Exchange routes email traffic through ETD for active "
+        "filtering. ETD is in the mail flow path. Requires configuring "
+        "inbound and/or outbound connectors and transport rules."
+    ),
+    "geo_region": (
+        "The geographic region where your ETD instance is deployed.\n\n"
+        "This determines the IP addresses and hostnames used for connectors "
+        "and transport rules.\n\n"
+        "Available regions: North America, Europe, India, Australia, "
+        "United Arab Emirates, Beta, Government."
+    ),
+    "journal_address": (
+        "The email address of the ETD journaling mailbox.\n\n"
+        "Exchange sends a BCC copy of all emails to this address for ETD "
+        "to analyze. This address is provided by Cisco ETD during onboarding.\n\n"
+        "Example: etd-journal-abc123@us.etd.cisco.com"
+    ),
+    "notification_alert": (
+        "An email address where journal delivery failure notifications "
+        "will be sent.\n\n"
+        "If a journaled message cannot be delivered, Exchange Online sends "
+        "a Non-Delivery Report (NDR) to this address.\n\n"
+        "Typically the Exchange admin or a shared distribution list."
+    ),
+    "seg_in_front": (
+        "Enable this if a Cisco Secure Email Gateway (SEG) is deployed "
+        "in front of Exchange Online.\n\n"
+        "When enabled, the inbound connector and bypass transport rule will "
+        "use the SEG IP addresses instead of the ETD IPs, since email "
+        "arrives at Exchange from the SEG, not directly from ETD."
+    ),
+    "seg_header": (
+        "The name of the custom header that the SEG inserts into emails "
+        "to identify their origin.\n\n"
+        "This header is used by transport rules to identify messages "
+        "already processed by the SEG.\n\n"
+        "Example: X-IronPort-RemoteIP"
+    ),
+    "active_flows": (
+        "Select which email flows to configure for ETD Inline mode:\n\n"
+        "Inbound: Emails from the internet through ETD. Creates an inbound "
+        "connector and transport rules (bypass spam, quarantine, junk).\n\n"
+        "Outbound: Emails from your users to the internet through ETD. "
+        "Creates an outbound connector and a tag transport rule.\n\n"
+        "Internal: Emails between internal users through ETD. Creates a "
+        "journal rule scoped to internal traffic."
+    ),
+    "inbound_ips": (
+        "The ETD IP addresses used for the inbound connector and bypass rule.\n\n"
+        "Auto-populated from the selected GEO region. These IPs represent "
+        "the ETD scanning cluster that relays inbound email to Exchange.\n\n"
+        "The inbound connector trusts email from these IPs, and the bypass "
+        "rule skips EOP spam filtering for messages from them."
+    ),
+    "smarthost": (
+        "The FQDN of the ETD outbound smart host.\n\n"
+        "Exchange uses this address to route outbound email to ETD for "
+        "scanning before delivery to the internet.\n\n"
+        "Auto-filled based on the selected GEO region. Can be overridden.\n"
+        "Example: out.us.etd.cisco.com"
+    ),
+    "xpass": (
+        "The authentication token for the X-CSE-ETD-OUTBOUND-AUTH header.\n\n"
+        "This header is inserted by the outbound transport rule and used "
+        "by ETD to verify the email came from your Exchange tenant.\n\n"
+        "This value must match the token configured in your ETD portal.\n"
+        "Default: 12345 — change this to your actual token."
+    ),
+    "outbound_rule": (
+        "Controls whether the ETD Outbound Tag transport rule is created "
+        "in Enabled or Disabled state.\n\n"
+        "Disabled is useful for testing: the rule exists but does not "
+        "route outbound email through ETD yet. You can enable it later "
+        "from the Exchange admin center or by running Install again."
+    ),
+    "internal_journal": (
+        "The ETD journaling address for the internal email flow.\n\n"
+        "Exchange sends a copy of all internal emails (between users in "
+        "your organization) to this address for ETD analysis.\n\n"
+        "Typically the same journaling address used in Journaling mode."
+    ),
+    "step_by_step": (
+        "Execute the installation one step at a time.\n\n"
+        "After each step completes you are asked whether to continue or stop.\n\n"
+        "Useful for:\n"
+        "  - Testing each component individually\n"
+        "  - Troubleshooting a specific step\n"
+        "  - Verifying each Exchange object before proceeding"
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# User manual
+# ---------------------------------------------------------------------------
+
+USER_MANUAL = """\
+CISCO SECURE EMAIL THREAT DEFENSE
+Exchange Online Configurator  —  User Manual
+Version {version}  ·  {date}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This tool automates the configuration of Microsoft Exchange Online to
+work with Cisco Secure Email Threat Defense (ETD).
+
+It connects to your Exchange Online tenant using PowerShell and creates
+the necessary connectors, transport rules, and journal rules based on
+your deployment mode and preferences.
+
+Requirements:
+  • PowerShell 7 (pwsh) installed on the local machine
+  • Exchange Online PowerShell module (EXO V3)
+      Install-Module -Name ExchangeOnlineManagement
+  • An Exchange Online admin account with Exchange Administrator role
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+O365 CONNECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Admin UPN
+  Enter the User Principal Name of the Exchange Online administrator.
+  This account is used to connect to Exchange Online via PowerShell.
+
+  Example:  admin@contoso.onmicrosoft.com
+
+  Required role:  Exchange Administrator
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEPLOYMENT MODE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Journaling Mode
+  Exchange sends a BCC copy of all emails to the ETD journaling address.
+  ETD analyzes emails passively without being in the mail flow.
+
+  What gets configured:
+    • Journaling NDR address  (admin UPN as bounce notification target)
+    • Outbound connector      (routes journal emails directly via MX)
+    • Journal rule            (sends all email copies to ETD)
+
+  Use this mode when ETD is deployed in monitoring / BCC mode.
+
+ETD Inline Mode
+  Exchange routes email through ETD for active inline filtering.
+  ETD is in the mail flow path and can block or quarantine messages.
+
+  Configure which flows to enable:
+    Inbound, Outbound, Internal — or any combination.
+
+  Use this mode when ETD is deployed as an inline MTA gateway.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+JOURNALING MODE — OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GEO Region
+  The geographic region of your ETD deployment. Determines which ETD
+  infrastructure is referenced in connector and rule configuration.
+
+Journaling Address
+  The ETD email address that receives journaled email copies.
+  Provided by Cisco during ETD onboarding.
+  Example:  etd-journal-abc123@us.etd.cisco.com
+
+Notification Alert Email
+  An email address that receives Non-Delivery Reports if journaling
+  fails. Typically the Exchange admin or a shared distribution list.
+
+SEG in Front of O365
+  Enable if a Cisco Secure Email Gateway (SEG) is deployed between
+  the internet and Exchange Online. When enabled, provide the SEG
+  header name used to identify messages already processed by the SEG.
+
+SEG Header Name
+  The name of the custom header inserted by the SEG.
+  Example:  X-IronPort-RemoteIP
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ETD INLINE MODE — OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GEO Region
+  Select your ETD geographic region. This auto-populates the ETD
+  inbound IP addresses and the outbound smart host FQDN.
+
+Active Flows
+
+  Inbound
+    Handles emails arriving from the internet through ETD.
+    Creates:
+      • Inbound Connector         trusts email from ETD IPs
+      • ETD Bypass Spam Filter    bypasses EOP spam filter for ETD IPs
+      • ETD Quarantine Rule       quarantines X-CSE-Quarantine messages
+      • ETD Junk Rule             marks X-CSE-Junk messages (SCL 9)
+
+  Outbound
+    Handles emails sent by your users to the internet through ETD.
+    Creates:
+      • Outbound Connector        routes outbound mail to ETD smart host
+      • ETD Outbound Tag Rule     adds X-CSE-ETD-OUTBOUND-AUTH header
+                                  and routes via the outbound connector
+
+    SmartHost
+      The ETD outbound relay FQDN. Auto-filled from the GEO region.
+
+    X-CSE-ETD-OUTBOUND-AUTH Value
+      Authentication token for ETD. Must match the value in your ETD
+      portal. Default is 12345 — change to your actual token.
+
+    Outbound Tag Rule
+      Choose whether to create the rule Enabled or Disabled.
+      Disabled allows testing: the rule exists but does not yet route
+      outbound email through ETD.
+
+  Internal
+    Handles emails between users in your organization through ETD.
+    Creates:
+      • Journaling NDR address configuration
+      • Journal Rule (Internal scope)  sends internal email copies to ETD
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Verify
+  Checks whether each ETD component is already configured in your
+  Exchange tenant. Does not make any changes. Shows CONFIGURED or
+  NOT CONFIGURED status for each object in the output console.
+
+Install
+  Creates all connectors, rules, and settings based on your
+  configuration. Skips objects that already exist.
+  On failure: offers to roll back all changes made during this run.
+
+Remove
+  Deletes all ETD-related connectors, transport rules, and journal
+  rules from your Exchange tenant. Use this to cleanly uninstall.
+
+Export .ps1
+  Saves the generated PowerShell script to a .ps1 file without
+  executing it. Useful for reviewing, running manually, or submitting
+  for approval before execution.
+
+Step by Step
+  Executes the installation one step at a time. After each step you
+  are asked whether to continue or stop. On failure, you are offered
+  the option to roll back all completed steps.
+  Useful for testing, troubleshooting, or staged deployments.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT / LOG CONSOLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The right panel shows real-time output from PowerShell.
+
+Color coding:
+  Blue     Informational messages (connecting, installing...)
+  Green    Success messages (configured, installed successfully)
+  Orange   Warnings (already exists, not configured)
+  Red      Errors (failed, exception)
+  Gray     Separator lines and log paths
+
+Controls:
+  A+ / A-          Increase or decrease console font size
+  Clear            Clear the console output
+  Open Log Folder  Open the folder containing session log files
+
+Log files are saved automatically:
+  macOS:    ~/Library/Logs/ETD_Configurator/
+  Windows:  %APPDATA%\\ETD_Configurator\\logs\\
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AUTO-UPDATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This application checks for updates automatically at startup.
+If a newer version is available, it downloads the updated logic files
+in the background and offers to restart the application.
+Updates are applied without requiring reinstallation of the .app/.exe.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PowerShell not found
+  Ensure PowerShell 7 (pwsh) is installed.
+    macOS:    brew install --cask powershell
+    Windows:  winget install Microsoft.PowerShell
+
+Exchange connection fails
+  • Verify the Admin UPN is correct
+  • Ensure the Exchange Online PowerShell module is installed:
+      Install-Module -Name ExchangeOnlineManagement
+  • Check that MFA / conditional access is not blocking the connection
+
+Object already exists
+  Install skips objects that already exist. Run Verify to see the
+  current state. Use Remove to clean up before re-installing.
+
+Permission denied
+  The admin account must have the Exchange Administrator role assigned
+  in the Microsoft 365 admin center.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +374,7 @@ class ETDApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         # Cisco brand palette
-        self.C_BLUE       = "#049FD9"   # Cisco primary blue
+        self.C_BLUE       = "#049FD9"
         self.C_BLUE_HOVER = "#037EB0"
         self.C_DARK_BLUE  = "#005073"
         self.C_NAVY       = "#1D2B3C"
@@ -100,6 +413,7 @@ class ETDApp(ctk.CTk):
                               fg_color="#D6EAF8")
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
+
         ctk.CTkButton(
             footer, text="About", width=60,
             fg_color="transparent",
@@ -108,6 +422,15 @@ class ETDApp(ctk.CTk):
             font=ctk.CTkFont(size=10),
             command=self._show_about,
         ).pack(side="right", padx=10)
+
+        ctk.CTkButton(
+            footer, text="Help", width=60,
+            fg_color="transparent",
+            text_color="#005073",
+            hover_color="#BEE0F0",
+            font=ctk.CTkFont(size=10),
+            command=self._show_help,
+        ).pack(side="right", padx=(0, 0))
 
         # ── Left: form ────────────────────────────────────────────────────
         self.form = ctk.CTkScrollableFrame(
@@ -192,6 +515,48 @@ class ETDApp(ctk.CTk):
 
         self._last_log_path = None
 
+    # ── Help button helper ─────────────────────────────────────────────────
+
+    def _help_btn(self, parent, key):
+        """Return a small '?' button that opens a help popup for the given key."""
+        return ctk.CTkButton(
+            parent, text="?", width=22, height=22,
+            fg_color="#D6EAF8", hover_color="#BEE0F0",
+            text_color="#005073", corner_radius=11,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            command=lambda k=key: self._show_help_popup(k),
+        )
+
+    def _show_help_popup(self, key):
+        text = HELP_TEXTS.get(key, "No help available.")
+        popup = ctk.CTkToplevel(self)
+        popup.title("Help")
+        popup.resizable(False, False)
+        popup.grab_set()
+
+        # Position near current mouse pointer
+        popup.update_idletasks()
+        px = min(self.winfo_pointerx() + 12, self.winfo_screenwidth() - 340)
+        py = min(self.winfo_pointery() + 12, self.winfo_screenheight() - 300)
+        popup.geometry(f"320x+{px}+{py}")
+
+        frame = ctk.CTkFrame(popup, fg_color="#FFF9C4",
+                             border_width=1, border_color="#F9A825",
+                             corner_radius=8)
+        frame.pack(fill="both", expand=True, padx=6, pady=6)
+
+        ctk.CTkLabel(
+            frame, text=text, wraplength=290,
+            justify="left", font=ctk.CTkFont(size=11),
+            text_color="#1D2B3C",
+        ).pack(padx=14, pady=(12, 8), anchor="w")
+
+        ctk.CTkButton(
+            frame, text="Close", width=80,
+            fg_color="#049FD9", hover_color="#037EB0",
+            command=popup.destroy,
+        ).pack(pady=(0, 10))
+
     # ── Form ──────────────────────────────────────────────────────────────
 
     def _build_form(self):
@@ -211,27 +576,36 @@ class ETDApp(ctk.CTk):
                 text_color="#005073",
             ).pack(anchor="w", padx=16, pady=(3, 0))
 
+        def lbl_row(text, help_key):
+            """A label row with an inline ? help button."""
+            fr = ctk.CTkFrame(F, fg_color="transparent")
+            fr.grid(row=r(), column=0, sticky="ew", padx=16, pady=(3, 0))
+            ctk.CTkLabel(fr, text=text).pack(side="left")
+            self._help_btn(fr, help_key).pack(side="left", padx=(6, 0))
+
         PAD = {"padx": 16, "pady": 3}
 
         # ── O365 CONNECTION ───────────────────────────────────────────────
         section("O365 CONNECTION")
-        ctk.CTkLabel(F, text="Admin UPN:").grid(row=r(), column=0, sticky="w", **PAD)
+        lbl_row("Admin UPN:", "admin_upn")
         self.upn_entry = ctk.CTkEntry(F, placeholder_text="admin@tenant.onmicrosoft.com")
         self.upn_entry.grid(row=r(), column=0, sticky="ew", **PAD)
 
         # ── ETD DEPLOYMENT MODE ───────────────────────────────────────────
         section("ETD DEPLOYMENT MODE")
+
+        mode_hdr = ctk.CTkFrame(F, fg_color="transparent")
+        mode_hdr.grid(row=r(), column=0, sticky="w", **PAD)
         self.mode_var = ctk.StringVar(value="Journaling")
-        mode_row = ctk.CTkFrame(F, fg_color="transparent")
-        mode_row.grid(row=r(), column=0, sticky="w", **PAD)
         ctk.CTkRadioButton(
-            mode_row, text="Journaling", variable=self.mode_var,
+            mode_hdr, text="Journaling", variable=self.mode_var,
             value="Journaling", command=self._on_mode_change,
         ).pack(side="left", padx=(0, 24))
         ctk.CTkRadioButton(
-            mode_row, text="ETD Inline", variable=self.mode_var,
+            mode_hdr, text="ETD Inline", variable=self.mode_var,
             value="Inline", command=self._on_mode_change,
         ).pack(side="left")
+        self._help_btn(mode_hdr, "deployment_mode").pack(side="left", padx=(14, 0))
 
         # Placeholder row for the dynamic mode panel
         self._mode_panel_row = r()
@@ -276,6 +650,20 @@ class ETDApp(ctk.CTk):
         )
         self.btn_export.grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
+        # Step-by-Step row
+        row3 = ctk.CTkFrame(F, fg_color="transparent")
+        row3.grid(row=r(), column=0, sticky="ew", **PAD)
+        row3.grid_columnconfigure(0, weight=1)
+
+        self.btn_step = ctk.CTkButton(
+            row3, text="Step by Step  ›",
+            fg_color="#005073", hover_color="#003D57",
+            text_color="white",
+            command=self._run_step_by_step,
+        )
+        self.btn_step.grid(row=0, column=0, padx=(0, 36), sticky="ew")
+        self._help_btn(row3, "step_by_step").grid(row=0, column=1, padx=(4, 0))
+
         self.status_lbl = ctk.CTkLabel(
             F, text="Ready",
             font=ctk.CTkFont(size=11),
@@ -286,6 +674,7 @@ class ETDApp(ctk.CTk):
         self._action_buttons = [
             self.btn_verify, self.btn_install,
             self.btn_remove, self.btn_export,
+            self.btn_step,
         ]
 
         # Build mode panels and set initial state
@@ -302,36 +691,42 @@ class ETDApp(ctk.CTk):
         self.journal_panel = ctk.CTkFrame(F, fg_color="transparent")
         self.journal_panel.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(self.journal_panel, text="GEO Region:").grid(
-            row=0, column=0, sticky="w", **P)
+        def jlbl(text, help_key, row_idx):
+            fr = ctk.CTkFrame(self.journal_panel, fg_color="transparent")
+            fr.grid(row=row_idx, column=0, sticky="ew", padx=12, pady=(3, 0))
+            ctk.CTkLabel(fr, text=text).pack(side="left")
+            self._help_btn(fr, help_key).pack(side="left", padx=(6, 0))
+
+        jlbl("GEO Region:", "geo_region", 0)
         self.journal_geo_var = ctk.StringVar(value=GEO_REGIONS[0])
         ctk.CTkOptionMenu(
             self.journal_panel, variable=self.journal_geo_var, values=GEO_REGIONS,
         ).grid(row=1, column=0, sticky="ew", **P)
 
-        ctk.CTkLabel(self.journal_panel, text="Journaling Address:").grid(
-            row=2, column=0, sticky="w", **P)
+        jlbl("Journaling Address:", "journal_address", 2)
         self.journal_entry = ctk.CTkEntry(
             self.journal_panel, placeholder_text="etd-journal@domain.com")
         self.journal_entry.grid(row=3, column=0, sticky="ew", **P)
 
-        ctk.CTkLabel(self.journal_panel, text="Notification Alert Email:").grid(
-            row=4, column=0, sticky="w", **P)
+        jlbl("Notification Alert Email:", "notification_alert", 4)
         self.journal_notif_entry = ctk.CTkEntry(
             self.journal_panel, placeholder_text="alerts@domain.com")
         self.journal_notif_entry.grid(row=5, column=0, sticky="ew", **P)
 
         seg_row = ctk.CTkFrame(self.journal_panel, fg_color="transparent")
         seg_row.grid(row=6, column=0, sticky="w", **P)
-        ctk.CTkLabel(seg_row, text="SEG in front of O365:").pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(seg_row, text="SEG in front of O365:").pack(side="left", padx=(0, 10))
         self.seg_var = ctk.BooleanVar(value=False)
         ctk.CTkSwitch(
             seg_row, text="", variable=self.seg_var, command=self._on_seg_change,
         ).pack(side="left")
+        self._help_btn(seg_row, "seg_in_front").pack(side="left", padx=(10, 0))
 
-        # SEG header field — shown conditionally at row 7
-        self.seg_header_label = ctk.CTkLabel(
-            self.journal_panel, text="SEG Header Name:")
+        # SEG header field — shown conditionally at row 7/8
+        self.seg_header_label = ctk.CTkFrame(self.journal_panel, fg_color="transparent")
+        ctk.CTkLabel(self.seg_header_label, text="SEG Header Name:").pack(side="left")
+        self._help_btn(self.seg_header_label, "seg_header").pack(side="left", padx=(6, 0))
+
         self.seg_header_entry = ctk.CTkEntry(
             self.journal_panel, placeholder_text="e.g. X-IronPort-RemoteIP")
 
@@ -350,22 +745,28 @@ class ETDApp(ctk.CTk):
             text_color="#005073",
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(6, 0))
 
-        ctk.CTkLabel(self.inline_panel, text="GEO Region:").grid(
-            row=1, column=0, sticky="w", **P)
+        geo_lbl_fr = ctk.CTkFrame(self.inline_panel, fg_color="transparent")
+        geo_lbl_fr.grid(row=1, column=0, sticky="ew", padx=12, pady=(3, 0))
+        ctk.CTkLabel(geo_lbl_fr, text="GEO Region:").pack(side="left")
+        self._help_btn(geo_lbl_fr, "geo_region").pack(side="left", padx=(6, 0))
+
         self.inline_geo_var = ctk.StringVar(value=GEO_REGIONS[0])
         ctk.CTkOptionMenu(
             self.inline_panel, variable=self.inline_geo_var, values=GEO_REGIONS,
             command=self._on_geo_change,
         ).grid(row=2, column=0, sticky="ew", **P)
 
+        flows_hdr = ctk.CTkFrame(self.inline_panel, fg_color="transparent")
+        flows_hdr.grid(row=3, column=0, sticky="w", padx=12, pady=(8, 0))
         ctk.CTkLabel(
-            self.inline_panel, text="Active Flows:",
+            flows_hdr, text="Active Flows:",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#005073",
-        ).grid(row=3, column=0, sticky="w", padx=12, pady=(8, 2))
+        ).pack(side="left")
+        self._help_btn(flows_hdr, "active_flows").pack(side="left", padx=(8, 0))
 
         flows_fr = ctk.CTkFrame(self.inline_panel, fg_color="transparent")
-        flows_fr.grid(row=4, column=0, sticky="w", padx=12, pady=(0, 4))
+        flows_fr.grid(row=4, column=0, sticky="w", padx=12, pady=(2, 4))
         self.flow_inbound  = ctk.BooleanVar(value=True)
         self.flow_outbound = ctk.BooleanVar(value=True)
         self.flow_internal = ctk.BooleanVar(value=False)
@@ -382,10 +783,15 @@ class ETDApp(ctk.CTk):
             fg_color="#DAEAF6", border_width=1, border_color="#049FD9",
         )
         self.inbound_panel.grid_columnconfigure(0, weight=1)
+
+        ib_hdr = ctk.CTkFrame(self.inbound_panel, fg_color="transparent")
+        ib_hdr.grid(row=0, column=0, sticky="w", padx=12, pady=(8, 2))
         ctk.CTkLabel(
-            self.inbound_panel, text="Inbound  —  ETD IP Addresses:",
+            ib_hdr, text="Inbound  —  ETD IP Addresses:",
             font=ctk.CTkFont(size=11, weight="bold"), text_color="#005073",
-        ).grid(row=0, column=0, sticky="w", padx=12, pady=(8, 2))
+        ).pack(side="left")
+        self._help_btn(ib_hdr, "inbound_ips").pack(side="left", padx=(8, 0))
+
         self.inbound_ips_text = ctk.CTkTextbox(
             self.inbound_panel, height=90,
             font=ctk.CTkFont(family="Courier New", size=11),
@@ -402,14 +808,21 @@ class ETDApp(ctk.CTk):
             self.outbound_panel, text="Outbound:",
             font=ctk.CTkFont(size=11, weight="bold"), text_color="#005073",
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(8, 2))
-        ctk.CTkLabel(self.outbound_panel, text="SmartHost:").grid(
-            row=1, column=0, sticky="w", padx=12)
+
+        sh_lbl = ctk.CTkFrame(self.outbound_panel, fg_color="transparent")
+        sh_lbl.grid(row=1, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(sh_lbl, text="SmartHost:").pack(side="left")
+        self._help_btn(sh_lbl, "smarthost").pack(side="left", padx=(6, 0))
+
         self.smarthost_entry = ctk.CTkEntry(
             self.outbound_panel, placeholder_text="ob1.hcXXXX.iphmx.com")
         self.smarthost_entry.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
-        ctk.CTkLabel(
-            self.outbound_panel, text="X-CSE-ETD-OUTBOUND-AUTH Value:").grid(
-            row=3, column=0, sticky="w", padx=12)
+
+        xp_lbl = ctk.CTkFrame(self.outbound_panel, fg_color="transparent")
+        xp_lbl.grid(row=3, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(xp_lbl, text="X-CSE-ETD-OUTBOUND-AUTH Value:").pack(side="left")
+        self._help_btn(xp_lbl, "xpass").pack(side="left", padx=(6, 0))
+
         self.xpass_entry = ctk.CTkEntry(self.outbound_panel)
         self.xpass_entry.insert(0, "12345")
         self.xpass_entry.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 4))
@@ -422,6 +835,7 @@ class ETDApp(ctk.CTk):
             rule_state_row, text="Enabled",
             variable=self.outbound_rule_enabled,
         ).pack(side="left")
+        self._help_btn(rule_state_row, "outbound_rule").pack(side="left", padx=(10, 0))
 
         # ── Internal sub-panel (row 7) ─────────────────────────────────────
         self.internal_panel = ctk.CTkFrame(
@@ -433,13 +847,21 @@ class ETDApp(ctk.CTk):
             self.internal_panel, text="Internal:",
             font=ctk.CTkFont(size=11, weight="bold"), text_color="#005073",
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(8, 2))
-        ctk.CTkLabel(self.internal_panel, text="Journaling Address:").grid(
-            row=1, column=0, sticky="w", padx=12)
+
+        ij_lbl = ctk.CTkFrame(self.internal_panel, fg_color="transparent")
+        ij_lbl.grid(row=1, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(ij_lbl, text="Journaling Address:").pack(side="left")
+        self._help_btn(ij_lbl, "internal_journal").pack(side="left", padx=(6, 0))
+
         self.internal_journal_entry = ctk.CTkEntry(
             self.internal_panel, placeholder_text="etd-journal@domain.com")
         self.internal_journal_entry.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
-        ctk.CTkLabel(self.internal_panel, text="Notification Alert Email:").grid(
-            row=3, column=0, sticky="w", padx=12)
+
+        in_lbl = ctk.CTkFrame(self.internal_panel, fg_color="transparent")
+        in_lbl.grid(row=3, column=0, sticky="w", padx=12)
+        ctk.CTkLabel(in_lbl, text="Notification Alert Email:").pack(side="left")
+        self._help_btn(in_lbl, "notification_alert").pack(side="left", padx=(6, 0))
+
         self.internal_notif_entry = ctk.CTkEntry(
             self.internal_panel, placeholder_text="alerts@domain.com")
         self.internal_notif_entry.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 8))
@@ -484,7 +906,7 @@ class ETDApp(ctk.CTk):
     def _on_seg_change(self):
         if self.seg_var.get():
             self.seg_header_label.grid(
-                row=7, column=0, sticky="w", padx=12, pady=(6, 0))
+                row=7, column=0, sticky="ew", padx=12, pady=(6, 0))
             self.seg_header_entry.grid(
                 row=8, column=0, sticky="ew", padx=12, pady=(0, 8))
         else:
@@ -532,19 +954,19 @@ class ETDApp(ctk.CTk):
             seg_header_name = self.seg_header_entry.get().strip() if seg_in_front else ""
 
             return {
-                "admin_upn":         admin_upn,
-                "journal_address":   journal,
+                "admin_upn":          admin_upn,
+                "journal_address":    journal,
                 "notification_alert": notification,
-                "deployment_mode":   mode,
-                "geo":               geo,
-                "etd_ips":           [],
-                "seg_in_front":      seg_in_front,
-                "seg_header_name":   seg_header_name,
-                "seg_ips":           [],
-                "flows":             {},
-                "smart_host":        "",
-                "xpass_value":       "",
-                "operation":         operation,
+                "deployment_mode":    mode,
+                "geo":                geo,
+                "etd_ips":            [],
+                "seg_in_front":       seg_in_front,
+                "seg_header_name":    seg_header_name,
+                "seg_ips":            [],
+                "flows":              {},
+                "smart_host":         "",
+                "xpass_value":        "",
+                "operation":          operation,
             }
 
         else:  # Inline
@@ -564,6 +986,7 @@ class ETDApp(ctk.CTk):
             xpass      = "12345"
             journal    = ""
             notification = ""
+            outbound_rule_enabled = True
 
             if flows["inbound"]:
                 etd_ips = _parse_ips(self.inbound_ips_text.get("1.0", "end"))
@@ -572,8 +995,8 @@ class ETDApp(ctk.CTk):
                     return None
 
             if flows["outbound"]:
-                smart_host           = self.smarthost_entry.get().strip()
-                xpass                = self.xpass_entry.get().strip() or "12345"
+                smart_host            = self.smarthost_entry.get().strip()
+                xpass                 = self.xpass_entry.get().strip() or "12345"
                 outbound_rule_enabled = self.outbound_rule_enabled.get()
                 if not smart_host:
                     messagebox.showerror("Validation", "SmartHost is required for Outbound.")
@@ -587,19 +1010,19 @@ class ETDApp(ctk.CTk):
                     return None
 
             return {
-                "admin_upn":          admin_upn,
-                "journal_address":    journal,
-                "notification_alert": notification,
-                "deployment_mode":    mode,
-                "flows":              flows,
-                "geo":                geo,
-                "etd_ips":            etd_ips,
-                "smart_host":              smart_host,
-                "outbound_rule_enabled":   outbound_rule_enabled if flows["outbound"] else True,
-                "seg_in_front":            False,
-                "seg_ips":            [],
-                "xpass_value":        xpass,
-                "operation":          operation,
+                "admin_upn":           admin_upn,
+                "journal_address":     journal,
+                "notification_alert":  notification,
+                "deployment_mode":     mode,
+                "flows":               flows,
+                "geo":                 geo,
+                "etd_ips":             etd_ips,
+                "smart_host":          smart_host,
+                "outbound_rule_enabled": outbound_rule_enabled,
+                "seg_in_front":        False,
+                "seg_ips":             [],
+                "xpass_value":         xpass,
+                "operation":           operation,
             }
 
     # ── Run ───────────────────────────────────────────────────────────────
@@ -620,8 +1043,6 @@ class ETDApp(ctk.CTk):
         )
         self._log(f"{'=' * 56}", "dim")
 
-        # El hilo de fondo NUNCA toca la UI — solo escribe en la Queue.
-        # El hilo principal vacía la Queue cada 50 ms con _poll.
         q = queue.Queue()
 
         def on_output(line):
@@ -643,7 +1064,6 @@ class ETDApp(ctk.CTk):
                 elif item[0] == "done":
                     _, success, log_path = item
                     self._last_log_path = log_path
-                    # Vaciar líneas que llegaron junto al "done"
                     while True:
                         try:
                             extra = q.get_nowait()
@@ -661,16 +1081,111 @@ class ETDApp(ctk.CTk):
                     self._log(f"  Log saved: {log_path}", "dim")
                     self._set_btns("normal")
 
-                    # Si install falló, ofrecer rollback
                     if not success and operation == "install":
                         if messagebox.askyesno(
-                            "Error durante la instalación",
-                            "Se produjeron errores durante la instalación.\n\n"
-                            "¿Deseas deshacer los cambios realizados?",
+                            "Installation Error",
+                            "Errors occurred during installation.\n\n"
+                            "Do you want to undo the changes made?",
                         ):
                             self._run("remove")
+                    return
 
-                    return  # dejar de hacer poll
+            self.after(50, _poll)
+
+        self.after(50, _poll)
+        run_script(script, on_output, on_done)
+
+    # ── Step-by-Step ──────────────────────────────────────────────────────
+
+    def _run_step_by_step(self):
+        config = self._collect("install")
+        if config is None:
+            return
+
+        steps = generate_steps(config)
+        if not steps:
+            messagebox.showinfo("Step by Step", "No steps to execute for this configuration.")
+            return
+
+        self._set_btns("disabled")
+        self._log(f"{'=' * 56}", "dim")
+        self._log(
+            f"  STEP-BY-STEP  |  {config['deployment_mode']}  |  {config['geo']}",
+            "info",
+        )
+        self._log(f"  Total steps: {len(steps)}", "info")
+        self._log(f"{'=' * 56}", "dim")
+        self._run_next_step(steps, 0, config)
+
+    def _run_next_step(self, steps, idx, config):
+        step_name, script = steps[idx]
+        total = len(steps)
+
+        self._log(f"  Step {idx + 1}/{total}: {step_name}", "info")
+        self._status(f"Step {idx + 1}/{total}: {step_name}", "#049FD9")
+
+        q = queue.Queue()
+
+        def on_output(line):
+            q.put(("line", line))
+
+        def on_done(success, log_path):
+            q.put(("done", success, log_path))
+
+        def _poll():
+            while True:
+                try:
+                    item = q.get_nowait()
+                except queue.Empty:
+                    break
+
+                if item[0] == "line":
+                    self._log_auto(item[1])
+
+                elif item[0] == "done":
+                    _, success, log_path = item
+                    self._last_log_path = log_path
+                    while True:
+                        try:
+                            extra = q.get_nowait()
+                            if extra[0] == "line":
+                                self._log_auto(extra[1])
+                        except queue.Empty:
+                            break
+
+                    if not success:
+                        self._log(f"  Step '{step_name}' FAILED.", "error")
+                        self._status(f"Step {idx + 1} FAILED", "#E74C3C")
+                        self._set_btns("normal")
+                        if messagebox.askyesno(
+                            "Step Failed",
+                            f"Step '{step_name}' failed.\n\n"
+                            "Do you want to undo all steps completed so far?",
+                        ):
+                            self._run("remove")
+                        return
+
+                    self._log(f"  Step '{step_name}' completed successfully.", "success")
+
+                    if idx + 1 < total:
+                        next_name = steps[idx + 1][0]
+                        if messagebox.askyesno(
+                            "Continue?",
+                            f"Step {idx + 1}/{total}  '{step_name}'  completed.\n\n"
+                            f"Continue with step {idx + 2}/{total}:\n"
+                            f"  '{next_name}' ?",
+                        ):
+                            self._run_next_step(steps, idx + 1, config)
+                        else:
+                            self._log("Step-by-step stopped by user.", "warning")
+                            self._status(f"Stopped at step {idx + 1}/{total}", "#FF6B00")
+                            self._set_btns("normal")
+                    else:
+                        self._log(f"{'=' * 56}", "dim")
+                        self._log("  All steps completed successfully.", "success")
+                        self._status("Step-by-step: all done", "green")
+                        self._set_btns("normal")
+                    return
 
             self.after(50, _poll)
 
@@ -796,6 +1311,51 @@ class ETDApp(ctk.CTk):
             fg_color="#049FD9", hover_color="#037EB0",
             command=win.destroy,
         ).pack(pady=(16, 0))
+
+    # ── Help manual ───────────────────────────────────────────────────────
+
+    def _show_help(self):
+        win = ctk.CTkToplevel(self)
+        win.title("Help  —  ETD Configurator User Manual")
+        win.resizable(True, True)
+
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        w, h = min(760, sw - 100), min(700, sh - 100)
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        win.geometry(f"{w}x{h}+{x}+{y}")
+        win.grab_set()
+
+        # Header
+        hdr = ctk.CTkFrame(win, corner_radius=0, height=44, fg_color="#005073")
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        ctk.CTkLabel(
+            hdr, text="  User Manual  —  ETD Configurator",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="white",
+        ).pack(side="left", padx=16)
+
+        # Scrollable text area
+        txt = ctk.CTkTextbox(
+            win,
+            font=ctk.CTkFont(family="Courier New", size=12),
+            fg_color="#F8FBFF",
+            text_color="#1D2B3C",
+            wrap="word",
+        )
+        txt.pack(fill="both", expand=True, padx=10, pady=(8, 4))
+
+        content = USER_MANUAL.format(version=VERSION, date=VERSION_DATE)
+        txt.insert("1.0", content)
+        txt.configure(state="disabled")
+
+        ctk.CTkButton(
+            win, text="Close", width=100,
+            fg_color="#049FD9", hover_color="#037EB0",
+            command=win.destroy,
+        ).pack(pady=(0, 10))
 
     # ── Status + button helpers ───────────────────────────────────────────
 

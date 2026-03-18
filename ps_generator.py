@@ -413,3 +413,253 @@ def _remove_block(mode, flows):
             "Remove-Object $JournalConnectorName { Get-OutboundConnector -Identity $JournalConnectorName -ErrorAction Stop | Remove-OutboundConnector -Confirm:$false }",
         ]
     return lines
+
+
+# ---------------------------------------------------------------------------
+# STEP-BY-STEP
+# ---------------------------------------------------------------------------
+
+def _step_preamble(config):
+    """Return preamble lines (functions + variables + connect) for a single-step script."""
+    mode      = config["deployment_mode"]
+    admin_upn = config["admin_upn"]
+    journal   = config["journal_address"]
+    flows     = config.get("flows", {})
+    etd_ips   = config.get("etd_ips", [])
+    seg_front = config.get("seg_in_front", False)
+    seg_ips   = config.get("seg_ips", [])
+    source_ips = seg_ips if (seg_front and seg_ips) else etd_ips
+    smart_host           = config.get("smart_host", "")
+    outbound_rule_enabled = config.get("outbound_rule_enabled", True)
+    xpass     = config.get("xpass_value", "12345")
+
+    lines = [_ps_functions()]
+    lines += [
+        f'$AdminUPN          = "{admin_upn}"',
+        f'$JournalAddress    = "{journal}"',
+        f'$JournalNdrAddress = "{admin_upn}"',
+    ]
+
+    if mode == "Inline":
+        if flows.get("inbound"):
+            lines += [
+                '$InboundConnectorName = "Cisco Secure Email Threat Defense Inbound"',
+                '$BypassRuleName       = "ETD Bypass Spam Filter"',
+                '$QuarantineRuleName   = "ETD Quarantine Rule"',
+                '$JunkRuleName         = "ETD Junk Rule"',
+            ]
+        if flows.get("outbound"):
+            rule_state = "$true" if outbound_rule_enabled else "$false"
+            lines += [
+                '$OutboundConnectorName  = "Cisco Secure Email Threat Defense Outbound"',
+                '$OutboundTagRuleName    = "ETD Outbound Tag"',
+                f'$OutboundSmartHost      = "{smart_host}"',
+                f'$XPassValue             = "{xpass}"',
+                f'$OutboundTagRuleEnabled = {rule_state}',
+            ]
+        if flows.get("internal"):
+            lines += ['$JournalRuleName = "Cisco Secure Email Threat Defense"']
+    else:
+        lines += [
+            '$JournalRuleName      = "Cisco Secure Email Threat Defense"',
+            '$JournalConnectorName = "Cisco ETD Journaling Direct"',
+            '$JournalDomain        = ($JournalAddress -split "@")[1]',
+        ]
+
+    if source_ips:
+        lines += [f"$CiscoIPs = {_ps_array(source_ips)}"]
+
+    lines += [
+        "",
+        'Write-Host ""',
+        'Write-Host "Connecting to Exchange Online..." -ForegroundColor Cyan',
+        "Connect-ExchangeOnline -UserPrincipalName $AdminUPN -ShowBanner:$false",
+        "",
+    ]
+    return lines
+
+
+def generate_steps(config):
+    """
+    Return [(step_name, mini_script), ...] for step-by-step installation.
+    Each mini-script: connect → one action → disconnect.
+    """
+    mode      = config["deployment_mode"]
+    flows     = config.get("flows", {})
+    seg_front = config.get("seg_in_front", False)
+    seg_ips   = config.get("seg_ips", [])
+    etd_ips   = config.get("etd_ips", [])
+    source_ips = seg_ips if (seg_front and seg_ips) else etd_ips
+
+    needs_journal = (mode == "Journaling") or (mode == "Inline" and flows.get("internal"))
+
+    epilogue = [
+        "",
+        "Disconnect-ExchangeOnline -Confirm:$false",
+        'Write-Host ""',
+        'Write-Host "Step completed." -ForegroundColor Cyan',
+    ]
+
+    def make(name, action_lines):
+        lines = _step_preamble(config) + action_lines + epilogue
+        return (name, "\n".join(lines))
+
+    steps = []
+
+    if needs_journal:
+        steps.append(make("Journaling NDR Address", [
+            "# ── Journaling NDR Address ───────────────────────────",
+            "$tc = Get-TransportConfig",
+            "if (-not $tc.JournalingReportNdrTo) {",
+            '    Write-Host "Configuring Journaling NDR address..." -ForegroundColor Cyan',
+            "    try {",
+            "        Set-TransportConfig -JournalingReportNdrTo $JournalNdrAddress -ErrorAction Stop",
+            '        Write-Host "Journaling NDR address set to $JournalNdrAddress" -ForegroundColor Green',
+            "    } catch {",
+            '        Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red',
+            "        Disconnect-ExchangeOnline -Confirm:$false",
+            "        exit 1",
+            "    }",
+            "} else {",
+            '    Write-Host "Journaling NDR already configured: $($tc.JournalingReportNdrTo)" -ForegroundColor Green',
+            "}",
+        ]))
+
+    if mode == "Inline":
+        if flows.get("inbound"):
+            steps.append(make("Inbound Connector", [
+                "# ── Inbound Connector ────────────────────────────────",
+                "if (-not (Get-InboundConnector -Identity $InboundConnectorName -ErrorAction SilentlyContinue)) {",
+                "    Install-Object $InboundConnectorName {",
+                "        New-InboundConnector `",
+                "            -Name $InboundConnectorName `",
+                "            -ConnectorType Partner `",
+                "            -SenderDomains '*' `",
+                "            -SenderIPAddresses $CiscoIPs `",
+                "            -RequireTls $true `",
+                "            -Enabled $true `",
+                "            -ErrorAction Stop",
+                "    }",
+                '} else { Write-Host "$InboundConnectorName already exists." -ForegroundColor Yellow }',
+            ]))
+            steps.append(make("ETD Bypass Spam Filter", [
+                "# ── Bypass Spam Filter Rule ───────────────────────────",
+                "if (-not (Get-TransportRule -Identity $BypassRuleName -ErrorAction SilentlyContinue)) {",
+                "    Install-Object $BypassRuleName {",
+                "        New-TransportRule `",
+                "            -Name $BypassRuleName `",
+                "            -SenderIpRanges $CiscoIPs `",
+                "            -SetSCL -1 `",
+                "            -Mode Enforce `",
+                "            -ErrorAction Stop",
+                "    }",
+                '} else { Write-Host "$BypassRuleName already exists." -ForegroundColor Yellow }',
+            ]))
+            steps.append(make("ETD Quarantine Rule", [
+                "# ── Quarantine Rule ──────────────────────────────────",
+                "if (-not (Get-TransportRule -Identity $QuarantineRuleName -ErrorAction SilentlyContinue)) {",
+                "    Install-Object $QuarantineRuleName {",
+                "        New-TransportRule `",
+                "            -Name $QuarantineRuleName `",
+                "            -HeaderMatchesMessageHeader 'X-CSE-Quarantine' `",
+                "            -HeaderMatchesPatterns 'true' `",
+                "            -Quarantine $true `",
+                "            -Mode Enforce `",
+                "            -ErrorAction Stop",
+                "    }",
+                '} else { Write-Host "$QuarantineRuleName already exists." -ForegroundColor Yellow }',
+            ]))
+            steps.append(make("ETD Junk Rule", [
+                "# ── Junk Rule ────────────────────────────────────────",
+                "if (-not (Get-TransportRule -Identity $JunkRuleName -ErrorAction SilentlyContinue)) {",
+                "    Install-Object $JunkRuleName {",
+                "        New-TransportRule `",
+                "            -Name $JunkRuleName `",
+                "            -HeaderMatchesMessageHeader 'X-CSE-Junk' `",
+                "            -HeaderMatchesPatterns 'true' `",
+                "            -SetSCL 9 `",
+                "            -Mode Enforce `",
+                "            -ErrorAction Stop",
+                "    }",
+                '} else { Write-Host "$JunkRuleName already exists." -ForegroundColor Yellow }',
+            ]))
+
+        if flows.get("outbound"):
+            steps.append(make("Outbound Connector", [
+                "# ── Outbound Connector ───────────────────────────────",
+                "if (-not (Get-OutboundConnector -Identity $OutboundConnectorName -ErrorAction SilentlyContinue)) {",
+                "    Install-Object $OutboundConnectorName {",
+                "        New-OutboundConnector `",
+                "            -Name $OutboundConnectorName `",
+                "            -ConnectorType Partner `",
+                "            -IsTransportRuleScoped $true `",
+                "            -SmartHosts $OutboundSmartHost `",
+                "            -UseMXRecord $false `",
+                "            -TlsSettings EncryptionOnly `",
+                "            -Enabled $true `",
+                "            -ErrorAction Stop",
+                "    }",
+                '} else { Write-Host "$OutboundConnectorName already exists." -ForegroundColor Yellow }',
+            ]))
+            steps.append(make("ETD Outbound Tag Rule", [
+                "# ── Outbound Tag Rule ─────────────────────────────────",
+                "if (-not (Get-TransportRule -Identity $OutboundTagRuleName -ErrorAction SilentlyContinue)) {",
+                "    Install-Object $OutboundTagRuleName {",
+                "        New-TransportRule `",
+                "            -Name $OutboundTagRuleName `",
+                "            -SentToScope NotInOrganization `",
+                "            -RouteMessageOutboundConnector $OutboundConnectorName `",
+                "            -SetHeaderName 'X-CSE-ETD-OUTBOUND-AUTH' `",
+                "            -SetHeaderValue $XPassValue `",
+                "            -Enabled $OutboundTagRuleEnabled `",
+                "            -Mode Enforce `",
+                "            -ErrorAction Stop",
+                "    }",
+                '} else { Write-Host "$OutboundTagRuleName already exists." -ForegroundColor Yellow }',
+            ]))
+
+        if flows.get("internal"):
+            steps.append(make("Journal Rule (Internal)", [
+                "# ── Journal Rule (Internal flow) ─────────────────────",
+                "if (-not (Get-JournalRule -Identity $JournalRuleName -ErrorAction SilentlyContinue)) {",
+                "    Install-Object $JournalRuleName {",
+                "        New-JournalRule `",
+                "            -Name $JournalRuleName `",
+                "            -JournalEmailAddress $JournalAddress `",
+                "            -Scope Internal `",
+                "            -Enabled $true `",
+                "            -ErrorAction Stop",
+                "    }",
+                '} else { Write-Host "$JournalRuleName already exists." -ForegroundColor Yellow }',
+            ]))
+
+    else:  # Journaling mode
+        steps.append(make("Journaling Outbound Connector", [
+            "# ── Journaling Outbound Connector (MX direct) ────────",
+            "if (-not (Get-OutboundConnector -Identity $JournalConnectorName -ErrorAction SilentlyContinue)) {",
+            "    Install-Object $JournalConnectorName {",
+            "        New-OutboundConnector `",
+            "            -Name $JournalConnectorName `",
+            "            -ConnectorType Partner `",
+            "            -RecipientDomains $JournalDomain `",
+            "            -UseMXRecord $true `",
+            "            -Enabled $true `",
+            "            -ErrorAction Stop",
+            "    }",
+            '} else { Write-Host "$JournalConnectorName already exists." -ForegroundColor Yellow }',
+        ]))
+        steps.append(make("Journal Rule", [
+            "# ── Journal Rule ─────────────────────────────────────",
+            "if (-not (Get-JournalRule -Identity $JournalRuleName -ErrorAction SilentlyContinue)) {",
+            "    Install-Object $JournalRuleName {",
+            "        New-JournalRule `",
+            "            -Name $JournalRuleName `",
+            "            -JournalEmailAddress $JournalAddress `",
+            "            -Scope Global `",
+            "            -Enabled $true `",
+            "            -ErrorAction Stop",
+            "    }",
+            '} else { Write-Host "$JournalRuleName already exists." -ForegroundColor Yellow }',
+        ]))
+
+    return steps
