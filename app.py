@@ -518,12 +518,12 @@ class ETDApp(ctk.CTk):
     # ── Help button helper ─────────────────────────────────────────────────
 
     def _help_btn(self, parent, key):
-        """Return a small '?' button that opens a help popup for the given key."""
+        """Return a small 'i' button that opens a help popup for the given key."""
         return ctk.CTkButton(
-            parent, text="?", width=22, height=22,
+            parent, text="i", width=22, height=22,
             fg_color="#D6EAF8", hover_color="#BEE0F0",
             text_color="#005073", corner_radius=11,
-            font=ctk.CTkFont(size=10, weight="bold"),
+            font=ctk.CTkFont(size=11, slant="italic", weight="bold"),
             command=lambda k=key: self._show_help_popup(k),
         )
 
@@ -533,12 +533,6 @@ class ETDApp(ctk.CTk):
         popup.title("Help")
         popup.resizable(False, False)
         popup.grab_set()
-
-        # Position near current mouse pointer
-        popup.update_idletasks()
-        px = min(self.winfo_pointerx() + 12, self.winfo_screenwidth() - 340)
-        py = min(self.winfo_pointery() + 12, self.winfo_screenheight() - 300)
-        popup.geometry(f"320x+{px}+{py}")
 
         frame = ctk.CTkFrame(popup, fg_color="#FFF9C4",
                              border_width=1, border_color="#F9A825",
@@ -556,6 +550,24 @@ class ETDApp(ctk.CTk):
             fg_color="#049FD9", hover_color="#037EB0",
             command=popup.destroy,
         ).pack(pady=(0, 10))
+
+        # Position near mouse pointer but clamped inside the app window
+        popup.update_idletasks()
+        pw = popup.winfo_reqwidth()
+        ph = popup.winfo_reqheight()
+
+        ax = self.winfo_rootx()
+        ay = self.winfo_rooty()
+        aw = self.winfo_width()
+        ah = self.winfo_height()
+
+        mx = self.winfo_pointerx() + 14
+        my = self.winfo_pointery() + 14
+
+        x = max(ax + 10, min(mx, ax + aw - pw - 10))
+        y = max(ay + 10, min(my, ay + ah - ph - 10))
+
+        popup.geometry(f"{pw}x{ph}+{x}+{y}")
 
     # ── Form ──────────────────────────────────────────────────────────────
 
