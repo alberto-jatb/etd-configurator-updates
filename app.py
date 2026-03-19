@@ -235,15 +235,15 @@ Active Flows
     Handles emails arriving from the internet through ETD.
     Creates:
       • Inbound Connector         trusts email from ETD IPs
-      • ETD Bypass Spam Filter    bypasses EOP spam filter for ETD IPs
-      • ETD Quarantine Rule       quarantines X-CSE-Quarantine messages
-      • ETD Junk Rule             marks X-CSE-Junk messages (SCL 9)
+      • Cisco Secure Email Threat Defense Bypass Spam Filter    bypasses EOP spam filter for ETD IPs
+      • Cisco Secure Email Threat Defense Quarantine Rule       quarantines X-CSE-Quarantine messages
+      • Cisco Secure Email Threat Defense Junk Rule             marks X-CSE-Junk messages (SCL 9)
 
   Outbound
     Handles emails sent by your users to the internet through ETD.
     Creates:
       • Outbound Connector        routes outbound mail to ETD smart host
-      • ETD Outbound Tag Rule     adds X-CSE-ETD-OUTBOUND-AUTH header
+      • Cisco Secure Email Threat Defense Outbound Tag Rule     adds X-CSE-ETD-OUTBOUND-AUTH header
                                   and routes via the outbound connector
 
     SmartHost

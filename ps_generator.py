@@ -107,15 +107,15 @@ def generate_script(config):
         if flows.get("inbound"):
             lines += [
                 '$InboundConnectorName = "Cisco Secure Email Threat Defense Inbound"',
-                '$BypassRuleName       = "ETD Bypass Spam Filter"',
-                '$QuarantineRuleName   = "ETD Quarantine Rule"',
-                '$JunkRuleName         = "ETD Junk Rule"',
+                '$BypassRuleName       = "Cisco Secure Email Threat Defense Bypass Spam Filter"',
+                '$QuarantineRuleName   = "Cisco Secure Email Threat Defense Quarantine Rule"',
+                '$JunkRuleName         = "Cisco Secure Email Threat Defense Junk Rule"',
             ]
         if flows.get("outbound"):
             rule_state = "$true" if outbound_rule_enabled else "$false"
             lines += [
                 '$OutboundConnectorName  = "Cisco Secure Email Threat Defense Outbound"',
-                '$OutboundTagRuleName    = "ETD Outbound Tag"',
+                '$OutboundTagRuleName    = "Cisco Secure Email Threat Defense Outbound Tag"',
                 f'$OutboundSmartHost      = "{smart_host}"',
                 f'$XPassValue             = "{xpass}"',
                 f'$OutboundTagRuleEnabled = {rule_state}',
@@ -444,15 +444,15 @@ def _step_preamble(config):
         if flows.get("inbound"):
             lines += [
                 '$InboundConnectorName = "Cisco Secure Email Threat Defense Inbound"',
-                '$BypassRuleName       = "ETD Bypass Spam Filter"',
-                '$QuarantineRuleName   = "ETD Quarantine Rule"',
-                '$JunkRuleName         = "ETD Junk Rule"',
+                '$BypassRuleName       = "Cisco Secure Email Threat Defense Bypass Spam Filter"',
+                '$QuarantineRuleName   = "Cisco Secure Email Threat Defense Quarantine Rule"',
+                '$JunkRuleName         = "Cisco Secure Email Threat Defense Junk Rule"',
             ]
         if flows.get("outbound"):
             rule_state = "$true" if outbound_rule_enabled else "$false"
             lines += [
                 '$OutboundConnectorName  = "Cisco Secure Email Threat Defense Outbound"',
-                '$OutboundTagRuleName    = "ETD Outbound Tag"',
+                '$OutboundTagRuleName    = "Cisco Secure Email Threat Defense Outbound Tag"',
                 f'$OutboundSmartHost      = "{smart_host}"',
                 f'$XPassValue             = "{xpass}"',
                 f'$OutboundTagRuleEnabled = {rule_state}',
@@ -542,7 +542,7 @@ def generate_steps(config):
                 "    }",
                 '} else { Write-Host "$InboundConnectorName already exists." -ForegroundColor Yellow }',
             ]))
-            steps.append(make("ETD Bypass Spam Filter", [
+            steps.append(make("Cisco Secure Email Threat Defense Bypass Spam Filter", [
                 "# ── Bypass Spam Filter Rule ───────────────────────────",
                 "if (-not (Get-TransportRule -Identity $BypassRuleName -ErrorAction SilentlyContinue)) {",
                 "    Install-Object $BypassRuleName {",
@@ -555,7 +555,7 @@ def generate_steps(config):
                 "    }",
                 '} else { Write-Host "$BypassRuleName already exists." -ForegroundColor Yellow }',
             ]))
-            steps.append(make("ETD Quarantine Rule", [
+            steps.append(make("Cisco Secure Email Threat Defense Quarantine Rule", [
                 "# ── Quarantine Rule ──────────────────────────────────",
                 "if (-not (Get-TransportRule -Identity $QuarantineRuleName -ErrorAction SilentlyContinue)) {",
                 "    Install-Object $QuarantineRuleName {",
@@ -569,7 +569,7 @@ def generate_steps(config):
                 "    }",
                 '} else { Write-Host "$QuarantineRuleName already exists." -ForegroundColor Yellow }',
             ]))
-            steps.append(make("ETD Junk Rule", [
+            steps.append(make("Cisco Secure Email Threat Defense Junk Rule", [
                 "# ── Junk Rule ────────────────────────────────────────",
                 "if (-not (Get-TransportRule -Identity $JunkRuleName -ErrorAction SilentlyContinue)) {",
                 "    Install-Object $JunkRuleName {",
@@ -601,7 +601,7 @@ def generate_steps(config):
                 "    }",
                 '} else { Write-Host "$OutboundConnectorName already exists." -ForegroundColor Yellow }',
             ]))
-            steps.append(make("ETD Outbound Tag Rule", [
+            steps.append(make("Cisco Secure Email Threat Defense Outbound Tag Rule", [
                 "# ── Outbound Tag Rule ─────────────────────────────────",
                 "if (-not (Get-TransportRule -Identity $OutboundTagRuleName -ErrorAction SilentlyContinue)) {",
                 "    Install-Object $OutboundTagRuleName {",
