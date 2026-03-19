@@ -72,6 +72,7 @@ HELP_TEXTS = {
         "will be sent.\n\n"
         "If a journaled message cannot be delivered, Exchange Online sends "
         "a Non-Delivery Report (NDR) to this address."
+        "If the address is already set, leave this field blank"
     ),
     "seg_in_front": (
         "Enable this if a Cisco Secure Email Gateway (SEG) is deployed "
@@ -423,35 +424,56 @@ class ETDApp(ctk.CTk):
 
     def _manual_update_check(self):
         import threading
-        from tkinter import messagebox
         self._update_btn.configure(state="disabled", text="Checking...")
 
         def _run():
+            error = None
             try:
                 from updater import check_and_update
-                new_version, updated = check_and_update(VERSION)
-            except Exception:
-                new_version, updated = None, []
+                new_version, _ = check_and_update(VERSION)
+            except Exception as e:
+                new_version, error = None, str(e)
 
             def _done():
                 self._update_btn.configure(state="normal", text="⟳ Check for Updates")
-                if new_version and updated:
+                self.lift()
+                self.focus_force()
+                if error:
+                    self._show_dialog("error", "Update Error", f"Could not check for updates:\n{error}")
+                elif new_version and new_version > VERSION:
                     msg = (
-                        f"Version {new_version} downloaded "
-                        f"({len(updated)} file(s) updated).\n\n"
+                        f"Version {new_version} is ready.\n\n"
                         "Restart the app to apply the update."
                     )
-                    if messagebox.askyesno("Update Available", msg):
+                    if self._show_dialog("yesno", "Update Ready", msg):
                         import subprocess, sys
                         self.destroy()
                         subprocess.Popen([sys.executable] + sys.argv)
                         sys.exit(0)
                 else:
-                    messagebox.showinfo("No Updates", "You are already on the latest version.")
+                    self._show_dialog("info", "No Updates", "You are already on the latest version.")
 
             self.after(0, _done)
 
         threading.Thread(target=_run, daemon=True).start()
+
+    def _show_dialog(self, kind, title, message):
+        import tkinter as tk
+        from tkinter import messagebox
+        top = tk.Toplevel(self)
+        top.withdraw()
+        top.lift()
+        top.attributes("-topmost", True)
+        if kind == "info":
+            messagebox.showinfo(title, message, parent=top)
+            result = None
+        elif kind == "yesno":
+            result = messagebox.askyesno(title, message, parent=top)
+        else:
+            messagebox.showerror(title, message, parent=top)
+            result = None
+        top.destroy()
+        return result
 
     # ── Body (form + console) ─────────────────────────────────────────────
 
