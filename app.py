@@ -427,12 +427,17 @@ class ETDApp(ctk.CTk):
         self._update_btn.configure(state="disabled", text="Checking...")
 
         def _run():
+            import socket
             error = None
+            prev_timeout = socket.getdefaulttimeout()
             try:
+                socket.setdefaulttimeout(8)
                 from updater import check_and_update
                 new_version, _ = check_and_update(VERSION)
             except Exception as e:
                 new_version, error = None, str(e)
+            finally:
+                socket.setdefaulttimeout(prev_timeout)
 
             def _done():
                 self._update_btn.configure(state="normal", text="⟳ Check for Updates")
