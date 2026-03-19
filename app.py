@@ -49,7 +49,7 @@ HELP_TEXTS = {
     "deployment_mode": (
         "Select the ETD deployment mode for your organization:\n\n"
         "Journaling: Exchange sends copies of all emails to ETD via a journal "
-        "rule. ETD analyzes them passively (BCC / monitoring mode).\n\n"
+        "rule. ETD analyzes them passively.\n\n"
         "ETD Inline: Exchange routes email traffic through ETD for active "
         "filtering. ETD is in the mail flow path. Requires configuring "
         "inbound and/or outbound connectors and transport rules."
@@ -63,7 +63,7 @@ HELP_TEXTS = {
     ),
     "journal_address": (
         "The email address of the ETD journaling mailbox.\n\n"
-        "Exchange sends a BCC copy of all emails to this address for ETD "
+        "Exchange sends a copy of all emails to this address for ETD "
         "to analyze. This address is provided by Cisco ETD during onboarding.\n\n"
         "Example: etd-journal-abc123@us.etd.cisco.com"
     ),
@@ -71,15 +71,12 @@ HELP_TEXTS = {
         "An email address where journal delivery failure notifications "
         "will be sent.\n\n"
         "If a journaled message cannot be delivered, Exchange Online sends "
-        "a Non-Delivery Report (NDR) to this address.\n\n"
-        "Typically the Exchange admin or a shared distribution list."
+        "a Non-Delivery Report (NDR) to this address."
     ),
     "seg_in_front": (
         "Enable this if a Cisco Secure Email Gateway (SEG) is deployed "
         "in front of Exchange Online.\n\n"
-        "When enabled, the inbound connector and bypass transport rule will "
-        "use the SEG IP addresses instead of the ETD IPs, since email "
-        "arrives at Exchange from the SEG, not directly from ETD."
+        "This is need for ETD to discover the real source IP."
     ),
     "seg_header": (
         "The name of the custom header that the SEG inserts into emails "
