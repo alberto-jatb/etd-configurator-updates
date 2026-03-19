@@ -399,6 +399,13 @@ class ETDApp(ctk.CTk):
             text_color="white",
         ).pack(side="left", padx=20)
 
+        ctk.CTkLabel(
+            hdr,
+            text=f"v{VERSION}  ",
+            font=ctk.CTkFont(size=12),
+            text_color="#A0C8D8",
+        ).pack(side="right")
+
     # ── Body (form + console) ─────────────────────────────────────────────
 
     def _build_body(self):
