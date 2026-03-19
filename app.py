@@ -523,7 +523,7 @@ class ETDApp(ctk.CTk):
             parent, text="i", width=22, height=22,
             fg_color="#D6EAF8", hover_color="#BEE0F0",
             text_color="#005073", corner_radius=11,
-            font=ctk.CTkFont(size=11, slant="italic", weight="bold"),
+            font=ctk.CTkFont(size=11, weight="bold"),
             command=lambda k=key: self._show_help_popup(k),
         )
 
