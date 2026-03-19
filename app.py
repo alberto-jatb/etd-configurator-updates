@@ -406,6 +406,53 @@ class ETDApp(ctk.CTk):
             text_color="#A0C8D8",
         ).pack(side="right")
 
+        self._update_btn = ctk.CTkButton(
+            hdr,
+            text="⟳ Check for Updates",
+            font=ctk.CTkFont(size=12),
+            fg_color="transparent",
+            hover_color="#037EB0",
+            text_color="#A0C8D8",
+            border_width=1,
+            border_color="#A0C8D8",
+            height=28,
+            width=150,
+            command=self._manual_update_check,
+        )
+        self._update_btn.pack(side="right", padx=(0, 10))
+
+    def _manual_update_check(self):
+        import threading
+        from tkinter import messagebox
+        self._update_btn.configure(state="disabled", text="Checking...")
+
+        def _run():
+            try:
+                from updater import check_and_update
+                new_version, updated = check_and_update(VERSION)
+            except Exception:
+                new_version, updated = None, []
+
+            def _done():
+                self._update_btn.configure(state="normal", text="⟳ Check for Updates")
+                if new_version and updated:
+                    msg = (
+                        f"Version {new_version} downloaded "
+                        f"({len(updated)} file(s) updated).\n\n"
+                        "Restart the app to apply the update."
+                    )
+                    if messagebox.askyesno("Update Available", msg):
+                        import subprocess, sys
+                        self.destroy()
+                        subprocess.Popen([sys.executable] + sys.argv)
+                        sys.exit(0)
+                else:
+                    messagebox.showinfo("No Updates", "You are already on the latest version.")
+
+            self.after(0, _done)
+
+        threading.Thread(target=_run, daemon=True).start()
+
     # ── Body (form + console) ─────────────────────────────────────────────
 
     def _build_body(self):
