@@ -1,2 +1,2 @@
-VERSION = "2.8"
-VERSION_DATE = "March 19, 2026"
+VERSION = "2.9"
+VERSION_DATE = "April 6, 2026"

@@ -959,8 +959,6 @@ class ETDApp(ctk.CTk):
     # ── Visibility toggles ────────────────────────────────────────────────
 
     def _on_mode_change(self):
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
         if self.mode_var.get() == "Journaling":
             self.journal_panel.grid(
                 row=self._mode_panel_row, column=0, sticky="ew", padx=4, pady=4)
@@ -973,8 +971,8 @@ class ETDApp(ctk.CTk):
             self.journal_panel.grid_remove()
             self._on_flow_change()
             w, h = 1180, 1000
-        x = (sw - w) // 2
-        y = (sh - h) // 2
+        x = self.winfo_x()
+        y = self.winfo_y()
         self.geometry(f"{w}x{h}+{x}+{y}")
 
     def _on_flow_change(self):
