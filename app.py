@@ -435,41 +435,51 @@ class ETDApp(ctk.CTk):
         import threading
         self._update_btn.configure(state="disabled", text="Checking...")
 
+        _done_called = [False]
+
+        def _done(new_version=None, error=None):
+            if _done_called[0]:
+                return
+            _done_called[0] = True
+            self._update_btn.configure(state="normal", text="⟳ Check for Updates")
+            self.lift()
+            self.focus_force()
+            if error:
+                self._show_dialog("error", "Update Error", f"Could not check for updates:\n{error}")
+            elif new_version and new_version > VERSION:
+                msg = (
+                    f"Version {new_version} is ready.\n\n"
+                    "Restart the app to apply the update."
+                )
+                if self._show_dialog("yesno", "Update Ready", msg):
+                    import subprocess, sys
+                    self.destroy()
+                    subprocess.Popen([sys.executable] + sys.argv)
+                    sys.exit(0)
+            else:
+                self._show_dialog("info", "No Updates", "You are already on the latest version.")
+
         def _run():
             import socket
             error = None
+            new_version = None
             prev_timeout = socket.getdefaulttimeout()
             try:
                 socket.setdefaulttimeout(8)
                 from updater import check_and_update
                 new_version, _ = check_and_update(VERSION)
             except Exception as e:
-                new_version, error = None, str(e)
+                error = str(e)
             finally:
                 socket.setdefaulttimeout(prev_timeout)
+            self.after(0, lambda: _done(new_version, error))
 
-            def _done():
-                self._update_btn.configure(state="normal", text="⟳ Check for Updates")
-                self.lift()
-                self.focus_force()
-                if error:
-                    self._show_dialog("error", "Update Error", f"Could not check for updates:\n{error}")
-                elif new_version and new_version > VERSION:
-                    msg = (
-                        f"Version {new_version} is ready.\n\n"
-                        "Restart the app to apply the update."
-                    )
-                    if self._show_dialog("yesno", "Update Ready", msg):
-                        import subprocess, sys
-                        self.destroy()
-                        subprocess.Popen([sys.executable] + sys.argv)
-                        sys.exit(0)
-                else:
-                    self._show_dialog("info", "No Updates", "You are already on the latest version.")
-
-            self.after(0, _done)
+        def _watchdog():
+            threading.Event().wait(timeout=15)
+            self.after(0, lambda: _done(error="Request timed out."))
 
         threading.Thread(target=_run, daemon=True).start()
+        threading.Thread(target=_watchdog, daemon=True).start()
 
     def _show_dialog(self, kind, title, message):
         import tkinter as tk
