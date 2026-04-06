@@ -53,6 +53,9 @@ def run_script(ps_script, output_callback, done_callback):
         ps_script      : str  - Full PowerShell script content
         output_callback: callable(str) - Called for each output line (thread-safe via after())
         done_callback  : callable(bool, str) - Called when done with (success, log_path)
+
+    Returns:
+        stop: callable() - Call to terminate the running process.
     """
     # Write script to a temporary file
     tmp = tempfile.NamedTemporaryFile(
@@ -65,6 +68,17 @@ def run_script(ps_script, output_callback, done_callback):
     # Prepare log file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = _log_dir() / f"etd_run_{timestamp}.log"
+
+    _proc = [None]
+    _stopped = [False]
+
+    def stop():
+        _stopped[0] = True
+        if _proc[0] is not None:
+            try:
+                _proc[0].kill()
+            except Exception:
+                pass
 
     def _run():
         pwsh = _pwsh_executable()
@@ -80,7 +94,7 @@ def run_script(ps_script, output_callback, done_callback):
 
         success = False
         try:
-            process = subprocess.Popen(
+            _proc[0] = subprocess.Popen(
                 [pwsh, "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", temp_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -89,22 +103,26 @@ def run_script(ps_script, output_callback, done_callback):
                 errors="replace",
             )
 
-            for line in process.stdout:
+            for line in _proc[0].stdout:
                 record(line.rstrip())
 
-            process.wait()
-            success = process.returncode == 0
+            _proc[0].wait()
+            success = _proc[0].returncode == 0 and not _stopped[0]
 
         except FileNotFoundError:
             record("ERROR: PowerShell (pwsh) not found.")
             record("Please install PowerShell 7: https://aka.ms/powershell")
         except Exception as e:
-            record(f"ERROR: {e}")
+            if not _stopped[0]:
+                record(f"ERROR: {e}")
         finally:
             try:
                 os.unlink(temp_path)
             except OSError:
                 pass
+
+        if _stopped[0]:
+            record("  Process stopped by user.")
 
         record("=" * 60)
         record(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Run finished - {'SUCCESS' if success else 'FAILED'}")
@@ -117,3 +135,4 @@ def run_script(ps_script, output_callback, done_callback):
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
+    return stop

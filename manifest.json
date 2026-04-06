@@ -1,12 +1,12 @@
 {
-  "version": "2.9",
+  "version": "2.9.01",
   "date": "April 6, 2026",
   "base_url": "https://raw.githubusercontent.com/alberto-jatb/etd-configurator-updates/main/",
   "files": {
-    "app.py": "d245c9e474bc3fe8399a858768593f5e5edd5118802f83b61e5f3e891c0dece4",
+    "app.py": "a65f35fdee5c8d0ec1a965163381c286b4bf6764e47f7e68647c9a2d4d9075b7",
     "geo_data.py": "27d681c857c7246dcae7637026dc2bc63d2ec36cc2684edf5deb9d877ddf2042",
     "ps_generator.py": "c61fc3cdcc812e6ecc5663f82f966818003964eb41f6a4ab0f8a32f3dea5f92f",
-    "executor.py": "50b2b0877d56077efa0db5b4092d19e7641570f9890eef4f437a349b253a5126",
-    "version.py": "debde5a292ed9df5078941e95f067dffca9cb2fb88f5b4ca9bf5c6dd40930336"
+    "executor.py": "d50622164280dc53ead58615b87417ad06748a16c8e2e707bf1cd9b7a93aa4a7",
+    "version.py": "6496117da4eacec4918d8744badcb413d090e0d3061b5ea04c46c4893ac2f45d"
   }
 }

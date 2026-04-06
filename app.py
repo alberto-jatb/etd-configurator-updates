@@ -546,6 +546,16 @@ class ETDApp(ctk.CTk):
         )
         self.btn_open_log.pack(side="right", padx=10, pady=6)
 
+        self.btn_stop = ctk.CTkButton(
+            console_hdr, text="⏹ Stop", width=70,
+            fg_color="#C0392B", hover_color="#922B21",
+            text_color="white",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            state="disabled",
+            command=self._stop_run,
+        )
+        self.btn_stop.pack(side="right", padx=(0, 4), pady=6)
+
         ctk.CTkButton(
             console_hdr, text="Clear", width=60,
             fg_color="transparent", border_width=1,
@@ -592,6 +602,7 @@ class ETDApp(ctk.CTk):
         tw.tag_configure("dim",     foreground="#6B8FA3")
 
         self._last_log_path = None
+        self._stop_fn = None
 
     # ── Help button helper ─────────────────────────────────────────────────
 
@@ -1120,6 +1131,22 @@ class ETDApp(ctk.CTk):
         if config is None:
             return
 
+        if (operation == "install"
+                and config.get("deployment_mode") == "Inline"
+                and config.get("flows", {}).get("outbound")
+                and config.get("outbound_rule_enabled")):
+            if not self._show_dialog(
+                "yesno",
+                "Outbound Tag Rule — Warning",
+                "The Outbound Tag Rule is currently set to Enabled.\n\n"
+                "This rule takes effect immediately and will affect live mail flow "
+                "as soon as it is installed.\n\n"
+                "Recommendation: install with the rule Disabled and enable it "
+                "manually once you have verified the connector is working correctly.\n\n"
+                "Do you want to continue with the rule Enabled?",
+            ):
+                return
+
         script = generate_script(config)
 
         self._set_btns("disabled")
@@ -1181,7 +1208,7 @@ class ETDApp(ctk.CTk):
             self.after(50, _poll)
 
         self.after(50, _poll)
-        run_script(script, on_output, on_done)
+        self._stop_fn = run_script(script, on_output, on_done)
 
     # ── Step-by-Step ──────────────────────────────────────────────────────
 
@@ -1278,7 +1305,7 @@ class ETDApp(ctk.CTk):
             self.after(50, _poll)
 
         self.after(50, _poll)
-        run_script(script, on_output, on_done)
+        self._stop_fn = run_script(script, on_output, on_done)
 
     # ── Export ────────────────────────────────────────────────────────────
 
@@ -1453,3 +1480,11 @@ class ETDApp(ctk.CTk):
     def _set_btns(self, state):
         for btn in self._action_buttons:
             btn.configure(state=state)
+        self.btn_stop.configure(state="normal" if state == "disabled" else "disabled")
+
+    def _stop_run(self):
+        if self._stop_fn:
+            self._stop_fn()
+            self._stop_fn = None
+        self._log("  Stopping...", "warning")
+        self.btn_stop.configure(state="disabled")
