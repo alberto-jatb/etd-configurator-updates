@@ -259,6 +259,11 @@ Active Flows
       Disabled allows testing: the rule exists but does not yet route
       outbound email through ETD.
 
+      WARNING: If the rule is set to Enabled at install time, it takes
+      effect immediately and will affect live outbound mail flow.
+      Recommendation: install with the rule Disabled, verify the
+      connector is working correctly, then enable it manually.
+
   Internal
     Handles emails between users in your organization through ETD.
     Creates:
@@ -306,6 +311,10 @@ Color coding:
   Gray     Separator lines and log paths
 
 Controls:
+  ⏹ Stop          Immediately terminate the running PowerShell process.
+                   Use this if an operation is taking too long or you
+                   need to cancel mid-execution. Note: steps already
+                   completed will not be automatically rolled back.
   A+ / A-          Increase or decrease console font size
   Clear            Clear the console output
   Open Log Folder  Open the folder containing session log files
