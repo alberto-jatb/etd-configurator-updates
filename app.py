@@ -378,58 +378,79 @@ class ETDApp(ctk.CTk):
         self.geometry(f"{w}x{h}+{x}+{y}")
 
         ctk.set_appearance_mode("light")
-        ctk.set_default_color_theme("blue")
+        _theme = os.path.join(os.path.dirname(__file__), "theme_neutral.json")
+        ctk.set_default_color_theme(_theme)
 
-        # Cisco brand palette
-        self.C_BLUE       = "#049FD9"
-        self.C_BLUE_HOVER = "#037EB0"
-        self.C_DARK_BLUE  = "#005073"
-        self.C_NAVY       = "#1D2B3C"
-        self.C_GREEN      = "#6CC04A"
-        self.C_GREEN_HOVER= "#549B3A"
-        self.C_ORANGE     = "#FF6B00"
-        self.C_RED        = "#C0392B"
-        self.C_RED_HOVER  = "#922B21"
+        # macOS-native palette
+        self.C_BLUE       = "#0071E3"   # macOS blue, primary actions
+        self.C_BLUE_HOVER = "#0068D1"
+        self.C_RED        = "#FF3B30"   # macOS red, danger
+        self.C_RED_HOVER  = "#D70015"
+        self.C_GREEN      = "#34C759"   # macOS green (success)
+        self.C_ORANGE     = "#FF6B00"   # warning
 
-        self._build_header()
-        self._build_body()
+        self._current_view = None
+        self._build_layout()
 
-    # ── Header ────────────────────────────────────────────────────────────
+    # ── Layout ────────────────────────────────────────────────────────────
 
-    def _build_header(self):
-        hdr = ctk.CTkFrame(self, corner_radius=0, height=52,
-                           fg_color="#005073")
-        hdr.pack(fill="x", side="top")
-        hdr.pack_propagate(False)
+    def _build_layout(self):
+        # Sidebar (left)
+        sidebar = ctk.CTkFrame(self, width=168, fg_color="#F7F7F7", corner_radius=0)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+        self._build_sidebar(sidebar)
 
+        # Thin divider
+        ctk.CTkFrame(self, width=1, fg_color="#E5E5EA", corner_radius=0).pack(
+            side="left", fill="y")
+
+        # Content area (right)
+        content = ctk.CTkFrame(self, fg_color="#FFFFFF", corner_radius=0)
+        content.pack(side="left", fill="both", expand=True)
+        self._build_content_area(content)
+
+    def _build_sidebar(self, sidebar):
+        # App name
         ctk.CTkLabel(
-            hdr,
-            text="  Cisco Secure Email Threat Defense  ·  Exchange Online Configurator",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="white",
-        ).pack(side="left", padx=20)
+            sidebar, text="ETD Configurator",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#1D1D1F", anchor="w",
+        ).pack(fill="x", padx=14, pady=(16, 2))
 
-        ctk.CTkLabel(
-            hdr,
-            text=f"v{VERSION}  ",
-            font=ctk.CTkFont(size=12),
-            text_color="#A0C8D8",
-        ).pack(side="right")
+        ctk.CTkFrame(sidebar, height=1, fg_color="#E5E5EA").pack(
+            fill="x", padx=12, pady=(2, 8))
 
+        nav_items = [
+            ("  Configuration", "config"),
+            ("  Output / Logs",  "output"),
+            ("  Help",           "help"),
+        ]
+        self._nav_btns = {}
+        for label, key in nav_items:
+            btn = ctk.CTkButton(
+                sidebar, text=label, anchor="w",
+                fg_color="transparent", hover_color="#EBEBEB",
+                text_color="#1D1D1F",
+                font=ctk.CTkFont(size=13),
+                height=32, corner_radius=6,
+                command=lambda k=key: self._show_view(k),
+            )
+            btn.pack(fill="x", padx=8, pady=2)
+            self._nav_btns[key] = btn
+
+        # Update button at bottom
+        ctk.CTkFrame(sidebar, height=1, fg_color="#E5E5EA").pack(
+            fill="x", padx=12, side="bottom", pady=(4, 0))
         self._update_btn = ctk.CTkButton(
-            hdr,
-            text="⟳ Check for Updates",
-            font=ctk.CTkFont(size=12),
-            fg_color="transparent",
-            hover_color="#037EB0",
-            text_color="#A0C8D8",
-            border_width=1,
-            border_color="#A0C8D8",
-            height=28,
-            width=150,
+            sidebar, text="  ⟳ Check for Updates", anchor="w",
+            fg_color="transparent", hover_color="#EBEBEB",
+            text_color="#86868B",
+            font=ctk.CTkFont(size=11),
+            height=28, corner_radius=6,
             command=self._manual_update_check,
         )
-        self._update_btn.pack(side="right", padx=(0, 10))
+        self._update_btn.pack(fill="x", padx=8, side="bottom", pady=4)
 
     def _manual_update_check(self):
         import threading
@@ -499,75 +520,79 @@ class ETDApp(ctk.CTk):
         top.destroy()
         return result
 
-    # ── Body (form + console) ─────────────────────────────────────────────
+    # ── Content area ──────────────────────────────────────────────────────
 
-    def _build_body(self):
-        body = ctk.CTkFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True)
-
-        # ── Footer ────────────────────────────────────────────────────────
-        footer = ctk.CTkFrame(self, corner_radius=0, height=28,
-                              fg_color="#D6EAF8")
-        footer.pack(fill="x", side="bottom")
-        footer.pack_propagate(False)
-
-        ctk.CTkButton(
-            footer, text="About", width=60,
-            fg_color="transparent",
-            text_color="#005073",
-            hover_color="#BEE0F0",
-            font=ctk.CTkFont(size=10),
-            command=self._show_about,
-        ).pack(side="right", padx=10)
-
-        ctk.CTkButton(
-            footer, text="Help", width=60,
-            fg_color="transparent",
-            text_color="#005073",
-            hover_color="#BEE0F0",
-            font=ctk.CTkFont(size=10),
-            command=self._show_help,
-        ).pack(side="right", padx=(0, 0))
-
-        # ── Left: form ────────────────────────────────────────────────────
-        self.form = ctk.CTkScrollableFrame(
-            body, width=420, corner_radius=0,
-            fg_color="#EBF5FB",
+    def _build_content_area(self, content):
+        # Title bar
+        title_bar = ctk.CTkFrame(content, height=46, fg_color="#FFFFFF", corner_radius=0)
+        title_bar.pack(fill="x")
+        title_bar.pack_propagate(False)
+        self._page_title_lbl = ctk.CTkLabel(
+            title_bar, text="",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#1D1D1F", anchor="w",
         )
-        self.form.pack(side="left", fill="y")
+        self._page_title_lbl.pack(side="left", padx=24)
+        ctk.CTkFrame(content, height=1, fg_color="#E5E5EA", corner_radius=0).pack(fill="x")
+
+        # Pages
+        self._pages = {}
+
+        # ── Config page ──
+        config_page = ctk.CTkFrame(content, fg_color="#FFFFFF", corner_radius=0)
+        self.form = ctk.CTkScrollableFrame(config_page, fg_color="#FFFFFF", corner_radius=0)
+        self.form.pack(fill="both", expand=True)
         self.form.grid_columnconfigure(0, weight=1)
-
         self._build_form()
+        self._pages["config"] = config_page
 
-        # ── Right: console ────────────────────────────────────────────────
-        right = ctk.CTkFrame(body, corner_radius=0, fg_color="transparent")
-        right.pack(side="left", fill="both", expand=True)
+        # ── Output page ──
+        output_page = ctk.CTkFrame(content, fg_color="#FFFFFF", corner_radius=0)
+        self._build_output_page(output_page)
+        self._pages["output"] = output_page
 
-        console_hdr = ctk.CTkFrame(right, corner_radius=0, height=36,
-                                   fg_color="#D6EAF8")
-        console_hdr.pack(fill="x")
-        console_hdr.pack_propagate(False)
+        # ── Help page ──
+        help_page = ctk.CTkFrame(content, fg_color="#FFFFFF", corner_radius=0)
+        self._build_help_page_view(help_page)
+        self._pages["help"] = help_page
 
-        ctk.CTkLabel(
-            console_hdr, text="OUTPUT  /  LOG",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="#005073",
-        ).pack(side="left", padx=14)
+        self._show_view("config")
+
+    def _show_view(self, view):
+        if self._current_view and self._current_view in self._pages:
+            self._pages[self._current_view].pack_forget()
+        self._pages[view].pack(fill="both", expand=True)
+        self._current_view = view
+        titles = {
+            "config": "Configuration",
+            "output": "Output / Logs",
+            "help":   "Help & Support",
+        }
+        self._page_title_lbl.configure(text=titles.get(view, ""))
+        for key, btn in self._nav_btns.items():
+            if key == view:
+                btn.configure(fg_color="#1D1D1F", text_color="white", hover_color="#2D2D2F")
+            else:
+                btn.configure(fg_color="transparent", text_color="#1D1D1F", hover_color="#EBEBEB")
+
+    def _build_output_page(self, parent):
+        # Console toolbar
+        hdr = ctk.CTkFrame(parent, height=40, fg_color="#FFFFFF", corner_radius=0)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
 
         self.btn_open_log = ctk.CTkButton(
-            console_hdr, text="Open Log Folder", width=130,
+            hdr, text="Open Log Folder", width=130,
             fg_color="transparent", border_width=1,
-            border_color="#049FD9",
-            text_color="#005073",
-            hover_color="#BEE0F0",
-            font=ctk.CTkFont(size=11),
+            border_color="#E5E5EA", text_color="#1D1D1F",
+            hover_color="#F5F5F7", font=ctk.CTkFont(size=11),
             command=self._open_log_folder,
         )
         self.btn_open_log.pack(side="right", padx=10, pady=6)
 
         self.btn_stop = ctk.CTkButton(
-            console_hdr, text="⏹ Stop", width=70,
-            fg_color="#C0392B", hover_color="#922B21",
+            hdr, text="⏹ Stop", width=70,
+            fg_color="#FF3B30", hover_color="#D70015",
             text_color="white",
             font=ctk.CTkFont(size=11, weight="bold"),
             state="disabled",
@@ -576,52 +601,60 @@ class ETDApp(ctk.CTk):
         self.btn_stop.pack(side="right", padx=(0, 4), pady=6)
 
         ctk.CTkButton(
-            console_hdr, text="Clear", width=60,
+            hdr, text="Clear", width=60,
             fg_color="transparent", border_width=1,
-            border_color="#049FD9",
-            text_color="#005073",
-            hover_color="#BEE0F0",
-            font=ctk.CTkFont(size=11),
+            border_color="#E5E5EA", text_color="#1D1D1F",
+            hover_color="#F5F5F7", font=ctk.CTkFont(size=11),
             command=self._clear_console,
         ).pack(side="right", padx=(0, 4), pady=6)
 
-        # Zoom buttons
         self._console_font_size = 12
         ctk.CTkButton(
-            console_hdr, text="A+", width=34,
+            hdr, text="A+", width=34,
             fg_color="transparent", border_width=1,
-            border_color="#049FD9", text_color="#005073",
-            hover_color="#BEE0F0", font=ctk.CTkFont(size=11),
+            border_color="#E5E5EA", text_color="#1D1D1F",
+            hover_color="#F5F5F7", font=ctk.CTkFont(size=11),
             command=self._zoom_in,
         ).pack(side="right", padx=(0, 2), pady=6)
         ctk.CTkButton(
-            console_hdr, text="A-", width=34,
+            hdr, text="A-", width=34,
             fg_color="transparent", border_width=1,
-            border_color="#049FD9", text_color="#005073",
-            hover_color="#BEE0F0", font=ctk.CTkFont(size=11),
+            border_color="#E5E5EA", text_color="#1D1D1F",
+            hover_color="#F5F5F7", font=ctk.CTkFont(size=11),
             command=self._zoom_out,
         ).pack(side="right", padx=(0, 2), pady=6)
 
-        self.console = ctk.CTkTextbox(
-            right,
-            font=ctk.CTkFont(family="Courier New", size=self._console_font_size),
-            fg_color="#F0F9FF",
-            text_color="#1D2B3C",
-            wrap="word",
-            state="disabled",
-        )
-        self.console.pack(fill="both", expand=True, padx=10, pady=(6, 4))
+        ctk.CTkFrame(parent, height=1, fg_color="#E5E5EA", corner_radius=0).pack(fill="x")
 
-        # Configure color tags on the underlying Text widget
+        self.console = ctk.CTkTextbox(
+            parent,
+            font=ctk.CTkFont(family="Courier New", size=self._console_font_size),
+            fg_color="#FAFAFA", text_color="#1D1D1F",
+            wrap="word", state="disabled", corner_radius=0,
+        )
+        self.console.pack(fill="both", expand=True)
+
         tw = self.console._textbox
-        tw.tag_configure("error",   foreground="#C0392B")
-        tw.tag_configure("success", foreground="#6CC04A")
+        tw.tag_configure("error",   foreground="#FF3B30")
+        tw.tag_configure("success", foreground="#34C759")
         tw.tag_configure("warning", foreground="#FF6B00")
-        tw.tag_configure("info",    foreground="#049FD9")
-        tw.tag_configure("dim",     foreground="#6B8FA3")
+        tw.tag_configure("info",    foreground="#0071E3")
+        tw.tag_configure("dim",     foreground="#86868B")
 
         self._last_log_path = None
         self._stop_fn = None
+
+    def _build_help_page_view(self, parent):
+        txt = ctk.CTkTextbox(
+            parent,
+            font=ctk.CTkFont(family="Courier New", size=12),
+            fg_color="#FFFFFF", text_color="#1D1D1F",
+            wrap="word", corner_radius=0,
+        )
+        txt.pack(fill="both", expand=True, padx=24, pady=16)
+        content = USER_MANUAL.format(version=VERSION, date=VERSION_DATE)
+        txt.insert("1.0", content)
+        txt.configure(state="disabled")
 
     # ── Help button helper ─────────────────────────────────────────────────
 
@@ -629,8 +662,8 @@ class ETDApp(ctk.CTk):
         """Return a small 'i' button that opens a help popup for the given key."""
         return ctk.CTkButton(
             parent, text="i", width=22, height=22,
-            fg_color="#D6EAF8", hover_color="#BEE0F0",
-            text_color="#005073", corner_radius=11,
+            fg_color="#EDF0F2", hover_color="#D8DDE2",
+            text_color="#1D2B3C", corner_radius=11,
             font=ctk.CTkFont(size=11, weight="bold"),
             command=lambda k=key: self._show_help_popup(k),
         )
@@ -642,8 +675,8 @@ class ETDApp(ctk.CTk):
         popup.resizable(False, False)
         popup.grab_set()
 
-        frame = ctk.CTkFrame(popup, fg_color="#FFF9C4",
-                             border_width=1, border_color="#F9A825",
+        frame = ctk.CTkFrame(popup, fg_color="#FFFFFF",
+                             border_width=1, border_color="#E5E5EA",
                              corner_radius=8)
         frame.pack(fill="both", expand=True, padx=6, pady=6)
 
@@ -655,7 +688,7 @@ class ETDApp(ctk.CTk):
 
         ctk.CTkButton(
             frame, text="Close", width=80,
-            fg_color="#049FD9", hover_color="#037EB0",
+            fg_color="#45991F", hover_color="#357A17",
             command=popup.destroy,
         ).pack(pady=(0, 10))
 
@@ -686,98 +719,125 @@ class ETDApp(ctk.CTk):
         def r():
             v = row[0]; row[0] += 1; return v
 
-        def section(title):
-            fr = ctk.CTkFrame(F, fg_color="transparent", height=28)
-            fr.grid(row=r(), column=0, sticky="ew", padx=0, pady=(12, 0))
-            ctk.CTkFrame(fr, height=1, fg_color="#049FD9").pack(fill="x", padx=14)
+        def groupbox(title):
+            box = ctk.CTkFrame(F, fg_color="#FFFFFF", corner_radius=8,
+                               border_width=1, border_color="#E5E5EA")
+            box.grid(row=r(), column=0, sticky="ew", padx=16, pady=(0, 10))
+            box.grid_columnconfigure(0, weight=1)
             ctk.CTkLabel(
-                fr, text=title,
-                font=ctk.CTkFont(size=10, weight="bold"),
-                text_color="#005073",
-            ).pack(anchor="w", padx=16, pady=(3, 0))
+                box, text=title,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color="#86868B", anchor="w",
+            ).grid(row=0, column=0, sticky="ew", padx=14, pady=(10, 0))
+            ctk.CTkFrame(box, height=1, fg_color="#E5E5EA").grid(
+                row=1, column=0, sticky="ew", pady=(6, 0))
+            inner = ctk.CTkFrame(box, fg_color="transparent")
+            inner.grid(row=2, column=0, sticky="ew")
+            inner.grid_columnconfigure(0, weight=1)
+            return inner
 
-        def lbl_row(text, help_key):
-            """A label row with an inline ? help button."""
-            fr = ctk.CTkFrame(F, fg_color="transparent")
-            fr.grid(row=r(), column=0, sticky="ew", padx=16, pady=(3, 0))
-            ctk.CTkLabel(fr, text=text).pack(side="left")
-            self._help_btn(fr, help_key).pack(side="left", padx=(6, 0))
+        def cfg_row(parent, label, help_key, row_idx):
+            fr = ctk.CTkFrame(parent, fg_color="transparent")
+            fr.grid(row=row_idx, column=0, sticky="ew", padx=14, pady=(10, 0))
+            fr.grid_columnconfigure(1, weight=1)
+            lbl_fr = ctk.CTkFrame(fr, fg_color="transparent", width=160)
+            lbl_fr.grid(row=0, column=0, sticky="nw")
+            lbl_fr.grid_propagate(False)
+            ctk.CTkLabel(
+                lbl_fr, text=label,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color="#86868B", anchor="w",
+            ).pack(side="left")
+            self._help_btn(lbl_fr, help_key).pack(side="left", padx=(4, 0))
+            right = ctk.CTkFrame(fr, fg_color="transparent")
+            right.grid(row=0, column=1, sticky="ew")
+            right.grid_columnconfigure(0, weight=1)
+            return right
 
-        PAD = {"padx": 16, "pady": 3}
+        # Top spacer
+        ctk.CTkFrame(F, height=1, fg_color="transparent").grid(
+            row=r(), column=0, pady=(12, 0))
 
         # ── O365 CONNECTION ───────────────────────────────────────────────
-        section("O365 CONNECTION")
-        lbl_row("Admin UPN:", "admin_upn")
-        self.upn_entry = ctk.CTkEntry(F, placeholder_text="admin@tenant.onmicrosoft.com")
-        self.upn_entry.grid(row=r(), column=0, sticky="ew", **PAD)
+        inn1 = groupbox("O365 CONNECTION")
+        r0 = cfg_row(inn1, "Admin UPN:", "admin_upn", 0)
+        self.upn_entry = ctk.CTkEntry(r0, placeholder_text="admin@tenant.onmicrosoft.com")
+        self.upn_entry.grid(row=0, column=0, sticky="ew", pady=(0, 10))
 
         # ── ETD DEPLOYMENT MODE ───────────────────────────────────────────
-        section("ETD DEPLOYMENT MODE")
+        inn2 = groupbox("ETD DEPLOYMENT MODE")
 
-        mode_hdr = ctk.CTkFrame(F, fg_color="transparent")
-        mode_hdr.grid(row=r(), column=0, sticky="w", **PAD)
+        mode_fr = ctk.CTkFrame(inn2, fg_color="transparent")
+        mode_fr.grid(row=0, column=0, sticky="w", padx=14, pady=(10, 0))
         self.mode_var = ctk.StringVar(value="Journaling")
         ctk.CTkRadioButton(
-            mode_hdr, text="Journaling", variable=self.mode_var,
+            mode_fr, text="Journaling", variable=self.mode_var,
             value="Journaling", command=self._on_mode_change,
         ).pack(side="left", padx=(0, 24))
         ctk.CTkRadioButton(
-            mode_hdr, text="ETD Inline", variable=self.mode_var,
+            mode_fr, text="ETD Inline", variable=self.mode_var,
             value="Inline", command=self._on_mode_change,
         ).pack(side="left")
-        self._help_btn(mode_hdr, "deployment_mode").pack(side="left", padx=(14, 0))
+        self._help_btn(mode_fr, "deployment_mode").pack(side="left", padx=(14, 0))
 
-        # Placeholder row for the dynamic mode panel
-        self._mode_panel_row = r()
+        # Container for the dynamic mode panel
+        self._mode_container = ctk.CTkFrame(inn2, fg_color="transparent")
+        self._mode_container.grid(row=1, column=0, sticky="ew", pady=(4, 8))
+        self._mode_container.grid_columnconfigure(0, weight=1)
 
         # ── ACTIONS ───────────────────────────────────────────────────────
-        section("ACTIONS")
-        row1 = ctk.CTkFrame(F, fg_color="transparent")
-        row1.grid(row=r(), column=0, sticky="ew", **PAD)
+        inn3 = groupbox("ACTIONS")
+
+        row1 = ctk.CTkFrame(inn3, fg_color="transparent")
+        row1.grid(row=0, column=0, sticky="ew", padx=14, pady=(10, 0))
         row1.grid_columnconfigure((0, 1), weight=1)
 
         self.btn_verify = ctk.CTkButton(
             row1, text="Verify",
-            fg_color="#049FD9", hover_color="#037EB0",
+            fg_color="transparent", hover_color="#F5F5F7",
+            border_width=1, border_color="#E5E5EA",
+            text_color="#1D1D1F",
             command=lambda: self._run("verify"),
         )
         self.btn_verify.grid(row=0, column=0, padx=(0, 4), sticky="ew")
 
         self.btn_install = ctk.CTkButton(
             row1, text="Install",
-            fg_color="#6CC04A", hover_color="#549B3A",
+            fg_color="#0071E3", hover_color="#0068D1",
             text_color="white",
             command=lambda: self._run("install"),
         )
         self.btn_install.grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
-        row2 = ctk.CTkFrame(F, fg_color="transparent")
-        row2.grid(row=r(), column=0, sticky="ew", **PAD)
+        row2 = ctk.CTkFrame(inn3, fg_color="transparent")
+        row2.grid(row=1, column=0, sticky="ew", padx=14, pady=(6, 0))
         row2.grid_columnconfigure((0, 1), weight=1)
 
         self.btn_remove = ctk.CTkButton(
             row2, text="Remove",
-            fg_color="#C0392B", hover_color="#922B21",
+            fg_color="#FF3B30", hover_color="#D70015",
+            text_color="white",
             command=lambda: self._run("remove"),
         )
         self.btn_remove.grid(row=0, column=0, padx=(0, 4), sticky="ew")
 
         self.btn_export = ctk.CTkButton(
             row2, text="Export .ps1",
-            fg_color="#FF6B00", hover_color="#CC5500",
-            text_color="white",
+            fg_color="transparent", hover_color="#F5F5F7",
+            border_width=1, border_color="#E5E5EA",
+            text_color="#1D1D1F",
             command=self._export,
         )
         self.btn_export.grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
         # Step-by-Step row
-        row3 = ctk.CTkFrame(F, fg_color="transparent")
-        row3.grid(row=r(), column=0, sticky="ew", **PAD)
+        row3 = ctk.CTkFrame(inn3, fg_color="transparent")
+        row3.grid(row=2, column=0, sticky="ew", padx=14, pady=(6, 0))
         row3.grid_columnconfigure(0, weight=1)
 
         self.btn_step = ctk.CTkButton(
             row3, text="Step by Step  ›",
-            fg_color="#005073", hover_color="#003D57",
+            fg_color="#1D1D1F", hover_color="#3A3A3C",
             text_color="white",
             command=self._run_step_by_step,
         )
@@ -785,11 +845,11 @@ class ETDApp(ctk.CTk):
         self._help_btn(row3, "step_by_step").grid(row=0, column=1, padx=(4, 0))
 
         self.status_lbl = ctk.CTkLabel(
-            F, text="Ready",
+            inn3, text="Ready",
             font=ctk.CTkFont(size=11),
-            text_color="#005073",
+            text_color="#86868B",
         )
-        self.status_lbl.grid(row=r(), column=0, sticky="w", padx=16, pady=(10, 18))
+        self.status_lbl.grid(row=3, column=0, sticky="w", padx=14, pady=(8, 12))
 
         self._action_buttons = [
             self.btn_verify, self.btn_install,
@@ -805,64 +865,91 @@ class ETDApp(ctk.CTk):
     # ── Journaling panel ──────────────────────────────────────────────────
 
     def _build_journaling_panel(self):
-        F = self.form
-        P = {"padx": 12, "pady": 3}
+        MC = self._mode_container
 
-        self.journal_panel = ctk.CTkFrame(F, fg_color="transparent")
+        self.journal_panel = ctk.CTkFrame(MC, fg_color="transparent")
         self.journal_panel.grid_columnconfigure(0, weight=1)
 
-        def jlbl(text, help_key, row_idx):
+        def jrow(label, help_key, row_idx):
             fr = ctk.CTkFrame(self.journal_panel, fg_color="transparent")
-            fr.grid(row=row_idx, column=0, sticky="ew", padx=12, pady=(3, 0))
-            ctk.CTkLabel(fr, text=text).pack(side="left")
-            self._help_btn(fr, help_key).pack(side="left", padx=(6, 0))
+            fr.grid(row=row_idx, column=0, sticky="ew", padx=14, pady=(8, 0))
+            fr.grid_columnconfigure(1, weight=1)
+            lbl_fr = ctk.CTkFrame(fr, fg_color="transparent", width=160)
+            lbl_fr.grid(row=0, column=0, sticky="nw")
+            lbl_fr.grid_propagate(False)
+            ctk.CTkLabel(
+                lbl_fr, text=label,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color="#86868B", anchor="w",
+            ).pack(side="left")
+            self._help_btn(lbl_fr, help_key).pack(side="left", padx=(4, 0))
+            right = ctk.CTkFrame(fr, fg_color="transparent")
+            right.grid(row=0, column=1, sticky="ew")
+            right.grid_columnconfigure(0, weight=1)
+            return right
 
-        jlbl("GEO Region:", "geo_region", 0)
+        # Row 0: GEO Region
+        r0 = jrow("GEO Region:", "geo_region", 0)
         self.journal_geo_var = ctk.StringVar(value=GEO_REGIONS[0])
         ctk.CTkOptionMenu(
-            self.journal_panel, variable=self.journal_geo_var, values=GEO_REGIONS,
-        ).grid(row=1, column=0, sticky="ew", **P)
+            r0, variable=self.journal_geo_var, values=GEO_REGIONS,
+        ).grid(row=0, column=0, sticky="ew")
 
-        jlbl("Journaling Address:", "journal_address", 2)
+        # Row 1: Journaling Address
+        r1 = jrow("Journaling Address:", "journal_address", 1)
         self.journal_entry = ctk.CTkEntry(
-            self.journal_panel, placeholder_text="etd-journal@domain.com")
-        self.journal_entry.grid(row=3, column=0, sticky="ew", **P)
+            r1, placeholder_text="etd-journal@domain.com")
+        self.journal_entry.grid(row=0, column=0, sticky="ew")
 
-        jlbl("Notification Alert Email:", "notification_alert", 4)
+        # Row 2: Notification Alert Email
+        r2 = jrow("Notification Email:", "notification_alert", 2)
         self.journal_notif_entry = ctk.CTkEntry(
-            self.journal_panel, placeholder_text="alerts@domain.com")
-        self.journal_notif_entry.grid(row=5, column=0, sticky="ew", **P)
+            r2, placeholder_text="alerts@domain.com")
+        self.journal_notif_entry.grid(row=0, column=0, sticky="ew")
 
-        seg_row = ctk.CTkFrame(self.journal_panel, fg_color="transparent")
-        seg_row.grid(row=6, column=0, sticky="w", **P)
-        ctk.CTkLabel(seg_row, text="SEG in front of O365:").pack(side="left", padx=(0, 10))
+        # Row 3: SEG in front of O365
+        r3 = jrow("SEG in front of O365:", "seg_in_front", 3)
         self.seg_var = ctk.BooleanVar(value=False)
         ctk.CTkSwitch(
-            seg_row, text="", variable=self.seg_var, command=self._on_seg_change,
+            r3, text="", variable=self.seg_var, command=self._on_seg_change,
+        ).grid(row=0, column=0, sticky="w")
+
+        # Row 4: SEG Header Name (shown/hidden as one unit)
+        self.seg_header_row = ctk.CTkFrame(self.journal_panel, fg_color="transparent")
+        self.seg_header_row.grid_columnconfigure(1, weight=1)
+        seg_lbl_fr = ctk.CTkFrame(self.seg_header_row, fg_color="transparent", width=160)
+        seg_lbl_fr.grid(row=0, column=0, sticky="nw")
+        seg_lbl_fr.grid_propagate(False)
+        ctk.CTkLabel(
+            seg_lbl_fr, text="SEG Header Name:",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#86868B", anchor="w",
         ).pack(side="left")
-        self._help_btn(seg_row, "seg_in_front").pack(side="left", padx=(10, 0))
-
-        # SEG header field — shown conditionally at row 7/8
-        self.seg_header_label = ctk.CTkFrame(self.journal_panel, fg_color="transparent")
-        ctk.CTkLabel(self.seg_header_label, text="SEG Header Name:").pack(side="left")
-        self._help_btn(self.seg_header_label, "seg_header").pack(side="left", padx=(6, 0))
-
+        self._help_btn(seg_lbl_fr, "seg_header").pack(side="left", padx=(4, 0))
+        seg_right = ctk.CTkFrame(self.seg_header_row, fg_color="transparent")
+        seg_right.grid(row=0, column=1, sticky="ew")
+        seg_right.grid_columnconfigure(0, weight=1)
         self.seg_header_entry = ctk.CTkEntry(
-            self.journal_panel, placeholder_text="e.g. X-IronPort-RemoteIP")
+            seg_right, placeholder_text="e.g. X-IronPort-RemoteIP")
+        self.seg_header_entry.grid(row=0, column=0, sticky="ew")
+
+        # Bottom spacer
+        ctk.CTkFrame(self.journal_panel, height=1, fg_color="transparent").grid(
+            row=5, column=0, pady=(8, 0))
 
     # ── Inline panel ──────────────────────────────────────────────────────
 
     def _build_inline_panel(self):
-        F = self.form
+        MC = self._mode_container
         P = {"padx": 12, "pady": 3}
 
-        self.inline_panel = ctk.CTkFrame(F, fg_color="transparent")
+        self.inline_panel = ctk.CTkFrame(MC, fg_color="transparent")
         self.inline_panel.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
             self.inline_panel, text="SMTP",
             font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="#005073",
+            text_color="#1D2B3C",
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(6, 0))
 
         geo_lbl_fr = ctk.CTkFrame(self.inline_panel, fg_color="transparent")
@@ -881,7 +968,7 @@ class ETDApp(ctk.CTk):
         ctk.CTkLabel(
             flows_hdr, text="Active Flows:",
             font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="#005073",
+            text_color="#1D2B3C",
         ).pack(side="left")
         self._help_btn(flows_hdr, "active_flows").pack(side="left", padx=(8, 0))
 
@@ -900,7 +987,7 @@ class ETDApp(ctk.CTk):
         # ── Inbound sub-panel (row 5) ──────────────────────────────────────
         self.inbound_panel = ctk.CTkFrame(
             self.inline_panel, corner_radius=8,
-            fg_color="#DAEAF6", border_width=1, border_color="#049FD9",
+            fg_color="#FFFFFF", border_width=1, border_color="#E5E5EA",
         )
         self.inbound_panel.grid_columnconfigure(0, weight=1)
 
@@ -908,7 +995,7 @@ class ETDApp(ctk.CTk):
         ib_hdr.grid(row=0, column=0, sticky="w", padx=12, pady=(8, 2))
         ctk.CTkLabel(
             ib_hdr, text="Inbound  —  ETD IP Addresses:",
-            font=ctk.CTkFont(size=11, weight="bold"), text_color="#005073",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color="#1D2B3C",
         ).pack(side="left")
         self._help_btn(ib_hdr, "inbound_ips").pack(side="left", padx=(8, 0))
 
@@ -921,12 +1008,12 @@ class ETDApp(ctk.CTk):
         # ── Outbound sub-panel (row 6) ─────────────────────────────────────
         self.outbound_panel = ctk.CTkFrame(
             self.inline_panel, corner_radius=8,
-            fg_color="#DAEAF6", border_width=1, border_color="#049FD9",
+            fg_color="#FFFFFF", border_width=1, border_color="#E5E5EA",
         )
         self.outbound_panel.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             self.outbound_panel, text="Outbound:",
-            font=ctk.CTkFont(size=11, weight="bold"), text_color="#005073",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color="#1D2B3C",
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(8, 2))
 
         sh_lbl = ctk.CTkFrame(self.outbound_panel, fg_color="transparent")
@@ -960,12 +1047,12 @@ class ETDApp(ctk.CTk):
         # ── Internal sub-panel (row 7) ─────────────────────────────────────
         self.internal_panel = ctk.CTkFrame(
             self.inline_panel, corner_radius=8,
-            fg_color="#DAEAF6", border_width=1, border_color="#049FD9",
+            fg_color="#FFFFFF", border_width=1, border_color="#E5E5EA",
         )
         self.internal_panel.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             self.internal_panel, text="Internal:",
-            font=ctk.CTkFont(size=11, weight="bold"), text_color="#005073",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color="#1D2B3C",
         ).grid(row=0, column=0, sticky="w", padx=12, pady=(8, 2))
 
         ij_lbl = ctk.CTkFrame(self.internal_panel, fg_color="transparent")
@@ -990,20 +1077,13 @@ class ETDApp(ctk.CTk):
 
     def _on_mode_change(self):
         if self.mode_var.get() == "Journaling":
-            self.journal_panel.grid(
-                row=self._mode_panel_row, column=0, sticky="ew", padx=4, pady=4)
+            self.journal_panel.grid(row=0, column=0, sticky="ew")
             self.inline_panel.grid_remove()
             self._on_seg_change()
-            w, h = 1180, 740
         else:
-            self.inline_panel.grid(
-                row=self._mode_panel_row, column=0, sticky="ew", padx=4, pady=4)
+            self.inline_panel.grid(row=0, column=0, sticky="ew")
             self.journal_panel.grid_remove()
             self._on_flow_change()
-            w, h = 1180, 1000
-        x = self.winfo_x()
-        y = self.winfo_y()
-        self.geometry(f"{w}x{h}+{x}+{y}")
 
     def _on_flow_change(self):
         if self.flow_inbound.get():
@@ -1023,13 +1103,10 @@ class ETDApp(ctk.CTk):
 
     def _on_seg_change(self):
         if self.seg_var.get():
-            self.seg_header_label.grid(
-                row=7, column=0, sticky="ew", padx=12, pady=(6, 0))
-            self.seg_header_entry.grid(
-                row=8, column=0, sticky="ew", padx=12, pady=(0, 8))
+            self.seg_header_row.grid(
+                row=4, column=0, sticky="ew", padx=14, pady=(8, 0))
         else:
-            self.seg_header_label.grid_remove()
-            self.seg_header_entry.grid_remove()
+            self.seg_header_row.grid_remove()
 
     def _on_geo_change(self, *_):
         self._populate_inbound_ips()
@@ -1150,6 +1227,8 @@ class ETDApp(ctk.CTk):
         if config is None:
             return
 
+        self._show_view("output")
+
         if (operation == "install"
                 and config.get("deployment_mode") == "Inline"
                 and config.get("flows", {}).get("outbound")
@@ -1236,6 +1315,7 @@ class ETDApp(ctk.CTk):
         if config is None:
             return
 
+        self._show_view("output")
         steps = generate_steps(config)
         if not steps:
             messagebox.showinfo("Step by Step", "No steps to execute for this configuration.")
@@ -1256,7 +1336,7 @@ class ETDApp(ctk.CTk):
         total = len(steps)
 
         self._log(f"  Step {idx + 1}/{total}: {step_name}", "info")
-        self._status(f"Step {idx + 1}/{total}: {step_name}", "#049FD9")
+        self._status(f"Step {idx + 1}/{total}: {step_name}", "#45991F")
 
         q = queue.Queue()
 
@@ -1416,14 +1496,14 @@ class ETDApp(ctk.CTk):
             win,
             text="Cisco ETD  ·  Exchange Online Configurator",
             font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#005073",
+            text_color="#1D2B3C",
         ).pack(pady=(24, 2))
 
         ctk.CTkLabel(
             win,
             text=f"Version {VERSION}  ·  {VERSION_DATE}",
             font=ctk.CTkFont(size=10),
-            text_color="#6B8FA3",
+            text_color="#7E868F",
         ).pack(pady=(0, 8))
 
         ctk.CTkLabel(
@@ -1442,54 +1522,14 @@ class ETDApp(ctk.CTk):
 
         ctk.CTkButton(
             win, text="Close", width=100,
-            fg_color="#049FD9", hover_color="#037EB0",
+            fg_color="#45991F", hover_color="#357A17",
             command=win.destroy,
         ).pack(pady=(16, 0))
 
     # ── Help manual ───────────────────────────────────────────────────────
 
     def _show_help(self):
-        win = ctk.CTkToplevel(self)
-        win.title("Help  —  ETD Configurator User Manual")
-        win.resizable(True, True)
-
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        w, h = min(760, sw - 100), min(700, sh - 100)
-        x = (sw - w) // 2
-        y = (sh - h) // 2
-        win.geometry(f"{w}x{h}+{x}+{y}")
-        win.grab_set()
-
-        # Header
-        hdr = ctk.CTkFrame(win, corner_radius=0, height=44, fg_color="#005073")
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        ctk.CTkLabel(
-            hdr, text="  User Manual  —  ETD Configurator",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="white",
-        ).pack(side="left", padx=16)
-
-        # Scrollable text area
-        txt = ctk.CTkTextbox(
-            win,
-            font=ctk.CTkFont(family="Courier New", size=12),
-            fg_color="#F8FBFF",
-            text_color="#1D2B3C",
-            wrap="word",
-        )
-        txt.pack(fill="both", expand=True, padx=10, pady=(8, 4))
-
-        content = USER_MANUAL.format(version=VERSION, date=VERSION_DATE)
-        txt.insert("1.0", content)
-        txt.configure(state="disabled")
-
-        ctk.CTkButton(
-            win, text="Close", width=100,
-            fg_color="#049FD9", hover_color="#037EB0",
-            command=win.destroy,
-        ).pack(pady=(0, 10))
+        self._show_view("help")
 
     # ── Status + button helpers ───────────────────────────────────────────
 
